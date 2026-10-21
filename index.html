@@ -203,6 +203,13 @@ button.kpi:hover{border-color:var(--faint)}
 .cl .sub{display:block}
 .mp{margin:0 0 8px;color:var(--muted);font-size:13px}
 .more{margin-top:8px}
+.escon{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 6%,var(--surface))}
+.eh{list-style:none;margin:8px 0;padding:0;font-size:12.5px;color:var(--muted)}
+.eh li{padding:3px 0;border-bottom:1px dashed var(--line-2)}
+#escBox:empty{display:none}
+.chipbtn{border:1px solid transparent;background:none;padding:3px 6px;border-radius:8px;display:inline-flex;gap:5px;align-items:center;cursor:pointer;font-size:13px}
+.chipbtn:hover{border-color:var(--faint);background:var(--surface-2)}
+.linkbtn{border:0;background:none;padding:0;color:var(--accent);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
 /* desktop: docked panel, sticky header, compact */
 tbody tr.sel td{background:var(--accent-soft)}
 tbody tr{scroll-margin-top:70px}
@@ -306,6 +313,7 @@ details.settings summary{cursor:pointer;font-weight:700;font-size:14px}
   <button class="dclose" id="dClose" aria-label="Band karein">×</button>
   <div class="dhead" id="dHead"></div>
   <div class="dbody">
+    <div class="sec" id="escBox"></div>
     <form class="sec" id="logForm" autocomplete="off"></form>
     <div class="sec"><h3>Follow-up history</h3><ul class="tl" id="dTimeline"></ul></div>
     <div id="dInfo"></div>
@@ -439,7 +447,7 @@ function defSettings(){ return {
 const S = {
   real:{customers:[],meta:null,fu:{},days:{}}, demoData:null, demo:false,
   settings:defSettings(), backend:'none', loaded:false, readOnly:false,
-  view:'dash', type:'agent', bk:null, plus:null, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
+  view:'dash', type:'agent', bk:null, plus:null, tw:null, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
 };
 const D = ()=>S.demo?S.demoData:S.real;
 let db=null, user=null, uid=null, dl=null;
@@ -548,7 +556,7 @@ function derive(c, fu, today, meta){
   }
   const active = c.due>0 && status!=='Paid';
   return {
-    c, fu, logs, status, next, agent, ar, cr, ptpState,
+    c, fu, logs, status, next, agent, ar, cr, ptpState, esc:(fu&&fu.esc)||null, escH:(fu&&fu.escHist)||[],
     isToday: active && next && next<=today,
     isLate: active && next && next<today,
     notCalled: c.due>0 && !logs.length && (c.age||0) > (c.cdays??30),
@@ -571,23 +579,35 @@ const CARDS = [
   {k:'b90',   l:'90+ din wale', c:'var(--b4)', f:r=>r.c.b[4]>0},
   {k:'pdc',   l:'PDC is hafte', c:'var(--b0)', f:r=>r.pdcWeek},
   {k:'chq',   l:'PDC mein dikkat', c:'var(--b3)', f:r=>r.chq},
+  {k:'esc',   l:'Escalation chalu', c:'var(--bad)', f:r=>!!r.esc},
+  {k:'esclate', l:'Escalation update late', hide:1, f:r=>!!r.esc&&!!r.esc.upd&&r.esc.upd<todayISO()},
   {k:'paid',  l:'Payment aaya', hide:1, f:r=>r.c.paid>0},
   {k:'new',   l:'Naye add hue', hide:1, f:r=>r.c.isNew},
   {k:'down',  l:'Due kam hua', hide:1, f:r=>r.c.prevOut>0&&r.c.out<r.c.prevOut-1},
   {k:'up',    l:'Due badha', hide:1, f:r=>r.c.prevOut>0&&r.c.out>r.c.prevOut+1},
+  {k:'any',   l:'Sab', hide:1, f:r=>true},
   {k:'ptpt',  l:'Aaj ke promise', hide:1, f:r=>r.status==='Promise To Pay'&&!!r.fu&&!!r.fu.ptp&&r.fu.ptp.date===todayISO()&&r.ptpState==='open'}
 ];
 function bAmt(c,from,to=4){ let s=0; for(let i=from;i<=to;i++) s+=c.b[i]||0; return s; }
 function bkAmt(r){ return S.bk!=null?(r.c.b[S.bk]||0):S.plus!=null?bAmt(r.c,S.plus):0; }
 function bkLabel(){ if(S.bk!=null) return 'Ageing '+BUCKETS[S.bk]+' din wale'; if(S.plus!=null) return ({2:'30+ din (31 din se upar)',3:'60+ din (61 din se upar)',4:'90+ din'})[S.plus]+' – sabhi customers'; return ''; }
 function bkShort(){ if(S.bk!=null) return BUCKETS[S.bk]; return ({2:'30+',3:'60+',4:'90+'})[S.plus]||''; }
-function resetAge(){ S.bk=null; S.plus=null; if(S.sort.k==='bamt') S.sort={k:'due',d:-1}; }
+function resetAge(){ S.bk=null; S.plus=null; S.tw=null; if(S.sort.k==='bamt'||S.sort.k==='lastcall'||S.sort.k==='escat') S.sort={k:'due',d:-1}; }
+function twLogs(r){ const d=new Date(); d.setHours(0,0,0,0); const T0=d.getTime(); return r.logs.filter(l=>l.at>=T0); }
+function twOk(r){ const ls=twLogs(r); if(!ls.length) return false; const t=S.tw;
+  if(t==='all') return true;
+  if(t==='conn') return ls.some(l=>!['Not Answer','Not Responded','Wrong No'].includes(l.st));
+  if(t==='prom') return ls.some(l=>l.st==='Promise To Pay');
+  if(t&&t.startsWith('st:')) return ls.some(l=>l.st===t.slice(3));
+  return false; }
+function twLabel(){ const t=S.tw; if(!t) return ''; const m={all:'Aaj jin customers se baat / update hua',conn:'Aaj baat hui (connected)',prom:'Aaj promise mile'}; return m[t]||('Aaj – '+t.slice(3)); }
 function filtered(rows){
   const card=CARDS.find(x=>x.k===S.card)||CARDS[0];
   const q=S.q.trim().toLowerCase();
   let out=rows.filter(card.f);
   if(S.bk!=null) out=out.filter(r=>(r.c.b[S.bk]||0)>0);
   if(S.plus!=null) out=out.filter(r=>bAmt(r.c,S.plus)>0);
+  if(S.tw) out=out.filter(twOk);
   if(S.agent) out=out.filter(r=>(r.agent||'—')===S.agent);
   if(S.status) out=out.filter(r=>S.status==='_none'?!r.status:r.status===S.status);
   if(S.bucket!=='') out=out.filter(r=>r.c.age!=null && bucketOf(r.c.age)===+S.bucket);
@@ -595,7 +615,7 @@ function filtered(rows){
   const {k,d}=S.sort;
   const val=r=>{ switch(k){
     case 'name': return r.c.name.toLowerCase(); case 'out': return r.c.out; case 'pdc': return r.c.pdc;
-    case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
+    case 'escat': return r.esc?r.esc.at:9e15; case 'lastcall': return r.logs.length?r.logs[r.logs.length-1].at:0; case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
     case 'status': return r.status||''; case 'next': return r.next||'9999'; default: return r.c.due; } };
   out.sort((a,b)=>{ const x=val(a), y=val(b); return (x<y?-1:x>y?1:0)*d; });
   return out;
@@ -719,12 +739,12 @@ function dashHTML(rows){
   const noPrev=`<p class="mp">Agli baar nayi sheets upload karte hi yahan dikhega.</p>`;
 
   const work=`<div class="sec dsec"><h3>Aaj ka kaam <small>${fmtD(t)}</small></h3>
-    <div class="kpis">${kpi('acc',tl.length,'Call / update log hue')}${kpi('',cm.size,'Customers se baat','',inrS(contAmt)+' due')}${kpi('good',conn,'Baat hui (connected)')}${kpi('',prom.length,'Promise mile','',inrS(promAmt))}</div>
-    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;align-items:center">${Object.entries(byst).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<span>${chip(k)} <b>${n}</b></span>`).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
+    <div class="kpis">${kpi('acc',tl.length,'Call / update log hue','tw:all',cm.size+' customers')}${kpi('',cm.size,'Customers se baat','tw:all',inrS(contAmt)+' due')}${kpi('good',conn,'Baat hui (connected)','tw:conn')}${kpi('',prom.length,'Promise mile','tw:prom',inrS(promAmt))}</div>
+    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;align-items:center">${Object.entries(byst).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<button type="button" class="chipbtn" data-go="tw:st:${esc(k)}" title="In customers ki list kholein">${chip(k)} <b>${n}</b></button>`).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
 
   const fup=`<div class="sec dsec"><h3>Aaj ke follow-up <small>${dueT.length} baaki</small></h3>
     <div class="prog" role="progressbar" aria-label="Aaj ka kaam" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-    <p class="mp">${done} customers ho chuke, ${dueT.length} baaki – ${pct}% kaam complete</p>
+    <p class="mp"><button type="button" class="linkbtn" data-go="tw:all">${done} customers ho chuke</button>, ${dueT.length} baaki – ${pct}% kaam complete</p>
     <div class="kpis">${kpi('acc',dueT.length,'Aaj pending','card:today',inrS(sumD(dueT))+' due')}${kpi('bad',late.length,'Late (purani date)','card:late',inrS(sumD(late)))}${kpi('',ptpT.length,'Aaj ke promise','card:ptpt',inrS(ptpT.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}${kpi('bad',broken.length,'Promise toota','card:broken',inrS(broken.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}</div></div>`;
 
   const nw=`<div class="sec dsec"><h3>Naye customers add hue <small>${has?'pichhle upload ke baad':''}</small></h3>
@@ -758,7 +778,14 @@ function dashHTML(rows){
     ${days.length>=1?`<div class="trend">${days.map(x=>{ const q=x.byType[S.type]||{}, p1=q.pdcPaid||0, p2=Math.max(0,(q.paid||0)-p1), hh=Math.max(2,Math.round((q.paid||0)/mx*88)); return `<div><small class="v">${inrS(q.paid||0)}</small><div class="tb" style="height:${hh}px"><i style="flex:${p2};background:var(--accent)"></i><i style="flex:${p1};background:var(--b0)"></i></div><small>${fmtD(x.date)}</small></div>`; }).join('')}</div>
     <div class="legend" style="margin-top:8px"><span><span class="dot2" style="--c:var(--b0)"></span>PDC</span><span><span class="dot2" style="--c:var(--accent)"></span>Transaction</span></div>`:`<p class="mp">Do upload ke baad yahan roz ka payment graph banega.</p>`}</div>`;
 
-  return warn+`<div class="dgrid">${work}${fup}</div><div class="dgrid">${nw}${pay}${dec}</div>${ageing}<div class="dgrid">${calls}${ag}${tr}</div>`;
+  const escRows=rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at);
+  const escLate=escRows.filter(r=>r.esc.upd&&r.esc.upd<t), escToday=escRows.filter(r=>r.esc.at>=T0).length;
+  const orphans=Object.entries(d.fu).filter(([k,f])=>f&&f.esc&&!d.customers.some(c=>c.k===k)).map(([k,f])=>({k,name:f.name||k,esc:f.esc}));
+  const escSec=`<div class="sec dsec" style="margin-bottom:12px"><h3>Escalation <small>${escRows.length} chalu</small></h3>
+    <div class="kpis">${kpi('bad',escRows.length,'Escalation chalu','card:esc',inrS(sumD(escRows))+' due')}${kpi('bad',escLate.length,'Update late','card:esclate')}${kpi('',escToday,'Aaj lagaye')}</div>
+    ${escRows.length?`<ul class="cl">${escRows.slice(0,6).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${Math.max(0,daysBetween(iso(new Date(r.esc.at)),t))} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${escRows.length>6?`<button class="btn small more" data-go="card:esc">Sab ${escRows.length} dekhein</button>`:''}`:`<p class="mp">Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.</p>`}
+    ${orphans.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par escalation chalu hai:</p><ul class="cl">${orphans.map(o=>`<li><span>${esc(o.name)}<span class="sub muted">${esc(o.esc.to||'—')} – ${esc((o.esc.reason||'').slice(0,70))}</span></span><button class="btn small" data-act="escdone" data-k="${esc(o.k)}">Hatayein</button></li>`).join('')}</ul>`:''}</div>`;
+  return warn+`<div class="dgrid">${work}${fup}</div>${escSec}<div class="dgrid">${nw}${pay}${dec}</div>${ageing}<div class="dgrid">${calls}${ag}${tr}</div>`;
 }
 function renderDelta(){
   const d=D(), m=d.meta, el=$('#delta');
@@ -821,12 +848,13 @@ function listHTML(rows){
       c.bounced>0?'<span class="flag">Cheque bounce</span>':'',
       c.stuck>0?'<span class="flag">PDC date nikal gayi</span>':'',
       c.nodate>0?'<span class="flag">PDC date nahi</span>':'',
+      r.esc?'<span class="flag">Escalated</span>':'',
       r.notCalled?'<span class="flag v">Call nahi hua</span>':''
     ].join('');
     const ptp = r.status==='Promise To Pay'&&r.fu.ptp?`<span class="sub">${inrS(r.fu.ptp.amount)} – ${fmtD(r.fu.ptp.date)}</span>`:'';
     return `<tr data-open="${esc(c.k)}" tabindex="0"${S.open===c.k?' class="sel"':''}>
       <td class="muted">${i+1}</td>
-      <td><span class="cname">${esc(c.name)}</span>${flags?'<div>'+flags+'</div>':''}</td>
+      <td><span class="cname">${esc(c.name)}</span>${S.tw?`<span class="sub" style="color:var(--accent);font-weight:600">${twLogs(r).map(l=>esc(l.st)+' – '+new Date(l.at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})).join(' · ')}</span>`:''}${r.esc?`<span class="sub" style="color:var(--bad);font-weight:600">→ ${esc(r.esc.to||'')}: ${esc((r.esc.reason||'').slice(0,60))} (${Math.max(0,daysBetween(iso(new Date(r.esc.at)),todayISO()))} din se)</span>`:''}${(S.card==='esc'||S.card==='esclate')&&r.esc?`<button class="btn small" style="margin-top:4px" data-act="escdone" data-k="${esc(c.k)}">Update mila – hatayein</button>`:''}${flags?'<div>'+flags+'</div>':''}</td>
       <td style="white-space:nowrap">${c.phone?esc(firstPhone(c.phone)):'<span class="muted">–</span>'}</td>
       <td class="num">${inr(c.out)}</td>
       <td class="num">${c.pdc?inr(c.pdc):'<span class="muted">–</span>'}</td>
@@ -842,7 +870,7 @@ function listHTML(rows){
   }).join('');
   const cd=CARDS.find(x=>x.k===S.card); S.lastList=f.map(r=>r.c.k);
   const bkOn=S.bk!=null||S.plus!=null, bkT=bkOn?f.reduce((s,r)=>s+bkAmt(r),0):0;
-  return `<p class="count">${bkOn?`<b>${bkLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${cd&&cd.hide?`<b>${cd.l}</b>${cd.k==='ptpt'?'':' (pichhle upload se)'} – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${f.length} customers – total due ${inr(tot)}${bkOn?` – is ageing mein ${inr(bkT)}`:''}</p>
+  return `<p class="count">${bkOn?`<b>${bkLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${S.tw?`<b>${twLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${cd&&cd.hide&&cd.k!=='any'?`<b>${cd.l}</b>${cd.k==='ptpt'?'':' (pichhle upload se)'} – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${f.length} customers – total due ${inr(tot)}${bkOn?` – is ageing mein ${inr(bkT)}`:''}</p>
   <div class="tablebox"><table>
     <thead>
       <tr class="grp">
@@ -917,7 +945,7 @@ function renderDrawer(fresh){
   const r=curRow(); if(!r){ closeDrawer(); return; }
   const c=r.c;
   const ph=firstPhone(c.phone), wa=phoneDigits(ph);
-  $('#dHead').innerHTML=`<h2 id="dTitle">${esc(c.name)}</h2>
+  $('#dHead').innerHTML=`<h2 id="dTitle">${esc(c.name)}</h2>${r.esc?'<span class="flag" style="margin-top:6px">Escalated</span>':''}
     <div class="links">
       ${ph?`<a class="btn small" href="tel:${esc(ph.replace(/[^\d+]/g,''))}">Call ${esc(ph)}</a>`:'<span class="muted">Phone number nahi hai</span>'}
       ${wa?`<a class="btn small" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(custMsg(c))}">WhatsApp reminder</a>`:''}
@@ -940,12 +968,50 @@ function renderDrawer(fresh){
     ${c.inv.length?`<table class="mini" style="margin-top:10px"><thead><tr><th>Bill date</th><th>Bill no.</th><th class="num">Bill amount</th><th class="num">Pending</th><th class="num">Din</th></tr></thead><tbody>${c.inv.map(v=>`<tr><td>${fmtD(v.d)}</td><td>${esc(v.r||'–')}</td><td class="num muted">${inr(v.f??v.a)}</td><td class="num">${inr(v.a)}</td><td class="num">${v.d?daysBetween(v.d,todayISO()):'–'}</td></tr>`).join('')}</tbody></table><p class="count" style="margin:6px 0 0">FIFO se pending maane gaye bills${c.n>c.inv.length?` – sabse purane ${c.inv.length} dikhaye gaye (kul ${c.n})`:''}</p>`:''}
     ${c.pdcs&&c.pdcs.length?`<h3 style="margin-top:14px">PDC</h3><table class="mini"><tbody>${c.pdcs.map(x=>`<tr><td>${x.d?fmtD(x.d):'<span class="flag">Date nahi</span>'}</td><td>${esc(x.no||'–')}${x.bank?`<span class="sub">${esc(x.bank)}</span>`:''}</td><td class="num">${inr(x.a)}</td><td>${x.bounce?'<span class="flag">Bounce</span>':(x.d&&daysBetween(x.d,todayISO())>3?'<span class="flag">Date nikal gayi</span>':'')}</td></tr>`).join('')}</tbody></table>`:''}
   </div>`;
-  if(fresh) renderForm(r);
+  if(fresh){ renderForm(r); renderEsc(r); }
   renderTimeline(r);
 }
 const QC=['Call nahi uthaya','Kal payment karega','Cheque dega','Payment ho gaya bol raha hai','Bill copy maangi','Rate / CN issue','Owner bahar hai'];
 const QA=['Visit kiya','Cheque le liya','Customer se baat ho gayi','Payment ki date di','Shop band thi','Number galat hai'];
 function localDT(ms){ const d=new Date(ms); return iso(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+const ESC_TO=['Manager','Accounts Head','Sales Head','Dispatch','IT Team','Agent'];
+const ESC_R=['Rate issue','Credit note pending','Short supply / return','Bill dispute','Payment adjustment','Delivery issue','Agent issue'];
+function escHistHTML(hh){ if(!hh||!hh.length) return ''; return `<ul class="eh">${hh.slice(-6).reverse().map(x=>`<li>${fmtDT(x.at)} – ${x.act==='raise'?'Escalate kiya: '+esc(x.to||'')+' ('+esc(x.reason||'')+')':x.act==='resolve'?'<b>Hata diya</b>'+(x.note?': '+esc(x.note):''):'Note: '+esc(x.note||'')}</li>`).join('')}</ul>`; }
+function renderEsc(r){
+  const box=$('#escBox'); if(!box||!r) return;
+  const ro=S.readOnly&&!S.demo, E=r.esc, t=todayISO();
+  if(E){
+    const dd=daysBetween(iso(new Date(E.at)),t), late=E.upd&&E.upd<t;
+    box.className='sec escon';
+    box.innerHTML=`<h3>Escalation chalu hai <span class="flag">${dd<=0?'aaj lagaya':dd+' din se'}</span></h3>
+      <p style="margin:0 0 4px"><b>${esc(E.to||'—')}</b> ko escalate kiya – ${fmtDT(E.at)}</p>
+      <p style="margin:0 0 8px">${esc(E.reason||'')}</p>
+      ${E.upd?`<p class="mp">Update kab tak: <b style="color:var(--ink)">${fmtD(E.upd)}</b>${late?' <span class="over">– late</span>':''}</p>`:''}
+      ${escHistHTML(r.escH)}
+      ${ro?'':`<label class="field"><span>Update / resolution note</span><textarea id="escNote" placeholder="Kya update mila"></textarea></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end"><button class="btn" type="button" id="escAddNote">Sirf note jodein</button><button class="btn primary" type="button" id="escResolve">Update mila – escalation hatayein</button></div>`}`;
+    if(!ro){
+      $('#escAddNote').onclick=async()=>{ const n=$('#escNote').value.trim(); if(!n){ toast('Pehle note likhein'); return; } try{ await saveEsc(r.c,'note',{note:n}); toast('Note jud gaya'); renderEsc(curRow()||r); }catch(err){ toast('Nahi hua: '+(err.code||err.message)); } };
+      $('#escResolve').onclick=async()=>{ const n=$('#escNote').value.trim(); try{ await saveEsc(r.c,'resolve',{note:n}); toast('Escalation hata diya'); renderEsc(curRow()||r); render(); }catch(err){ toast('Nahi hua: '+(err.code||err.message)); } };
+    }
+    return;
+  }
+  box.className='sec';
+  if(ro){ box.innerHTML=r.escH.length?`<h3>Escalation history</h3>${escHistHTML(r.escH)}`:''; if(!r.escH.length) box.className=''; return; }
+  box.innerHTML=`<details><summary style="cursor:pointer;font-weight:700;font-size:14.5px">Escalation lagayein</summary>
+    <form id="escForm" autocomplete="off" style="margin-top:10px">
+      <label class="field"><span>Kisko escalate kiya</span><input name="to" list="escToList" required placeholder="Jaise Manager, Accounts Head"><datalist id="escToList">${ESC_TO.map(x=>`<option value="${x}">`).join('')}</datalist></label>
+      <label class="field"><span>Concern / reason</span><textarea name="reason" required placeholder="Kya concern raise kiya"></textarea><div class="qchips">${ESC_R.map(q=>`<button type="button">${q}</button>`).join('')}</div></label>
+      <label class="field"><span>Update kab tak chahiye (optional)</span><input type="date" name="upd"></label>
+      <div class="qchips nxq"><button type="button" data-d="1">Kal</button><button type="button" data-d="2">+2 din</button><button type="button" data-d="3">+3 din</button><button type="button" data-d="7">+7 din</button></div>
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Escalation lagayein</button></div>
+    </form></details>${escHistHTML(r.escH)}`;
+  const fm=$('#escForm');
+  fm.querySelectorAll('.qchips').forEach(b2=>b2.onclick=e=>{ const b=e.target.closest('button'); if(!b) return; if(b.dataset.d!=null){ fm.elements['upd'].value=addDays(todayISO(),+b.dataset.d); return; } const ta=fm.elements['reason']; ta.value=(ta.value.trim()?ta.value.trim()+'. ':'')+b.textContent; ta.focus(); });
+  fm.onsubmit=async e=>{ e.preventDefault(); const to=fm.elements['to'].value.trim(), reason=fm.elements['reason'].value.trim(), upd=fm.elements['upd'].value||null; if(!to||!reason) return;
+    const btn=fm.querySelector('button[type=submit]'); btn.disabled=true;
+    try{ await saveEsc(r.c,'raise',{to,reason,upd}); toast('Escalation lag gaya'); renderEsc(curRow()||r); render(); }catch(err){ toast('Nahi hua: '+(err.code||err.message)); btn.disabled=false; } };
+}
 function renderForm(r){
   const f=$('#logForm');
   if(S.readOnly && !S.demo){ f.innerHTML='<h3>Call log</h3><p class="muted" style="margin:0">Sirf dekhne ka access hai.</p>'; return; }
@@ -1026,12 +1092,12 @@ async function renderTimeline(r){
 
 /* ============ storage ============ */
 function clone(o){ return JSON.parse(JSON.stringify(o||{})); }
-function docFromLogs(c, logs, agent){
+function docFromLogs(c, logs, agent, base){
   logs=logs.slice().sort((a,b)=>a.at-b.at).slice(-150);
   const l=logs[logs.length-1];
   return { name:c.name, status:l?l.st:null, with:l?l.with:null, next:l?l.next:null,
     ptp: l&&l.st==='Promise To Pay'?{date:l.pd, amount:l.pa, dueAt:l.dueAt??c.due, at:l.at}:null,
-    agent: agent||null, logs, updatedAt:Date.now() };
+    agent: agent||null, logs, updatedAt:Date.now(), esc:(base&&base.esc)||null, escHist:(base&&base.escHist)||[] };
 }
 async function putFu(c, doc){
   const d=D();
@@ -1041,11 +1107,27 @@ async function putFu(c, doc){
 }
 async function saveLog(c, entry, agentOverride){
   const cur=clone(D().fu[c.k]);
-  await putFu(c, docFromLogs(c,(cur.logs||[]).concat([entry]), agentOverride||cur.agent));
+  await putFu(c, docFromLogs(c,(cur.logs||[]).concat([entry]), agentOverride||cur.agent, cur));
+}
+async function saveEsc(c, act, data){
+  const cur=clone(D().fu[c.k]); const now=Date.now(); const hist=(cur.escHist||[]).slice(); let E=cur.esc||null;
+  if(act==='raise'){ E={at:now,to:data.to,reason:data.reason,upd:data.upd||null,by:uid||null}; hist.push({at:now,act:'raise',to:data.to,reason:data.reason,upd:data.upd||null,by:uid||null}); }
+  else if(act==='note'){ hist.push({at:now,act:'note',note:data.note,by:uid||null}); }
+  else if(act==='resolve'){ hist.push({at:now,act:'resolve',note:data.note||'',by:uid||null}); E=null; }
+  const doc={...docFromLogs(c,cur.logs||[],cur.agent,cur), esc:E, escHist:hist.slice(-60)};
+  await putFu(c, doc);
+  if(!S.demo) D().fu[c.k]=doc;
+}
+async function escDone(k){
+  if(S.readOnly&&!S.demo){ toast('Sirf dekhne ka access hai'); return; }
+  const d=D(); const c=d.customers.find(x=>x.k===k)||{k,name:(d.fu[k]&&d.fu[k].name)||k,due:0};
+  const note=prompt('Update / resolution note likhein (khali chhod sakte hain).\nOK dabate hi escalation hat jayega:'); if(note===null) return;
+  try{ await saveEsc(c,'resolve',{note:note.trim()}); toast('Escalation hata diya'); if(S.open===k) renderEsc(curRow()); render(); }
+  catch(err){ toast('Nahi hua: '+(err.code||err.message)); }
 }
 async function deleteLog(c, at){
   const cur=clone(D().fu[c.k]); const logs=(cur.logs||[]).filter(l=>String(l.at)!==String(at));
-  await putFu(c, docFromLogs(c, logs, cur.agent));
+  await putFu(c, docFromLogs(c, logs, cur.agent, cur));
 }
 async function saveSnapshot(custs, meta){
   if(db){
@@ -1206,8 +1288,8 @@ async function processUpload(){
 async function exportXlsx(){
   if(!window.XLSX){ toast('Excel library load nahi hui – internet check karein'); return; }
   const rows=allRows(); const f=S.view==='list'?filtered(rows):rows.filter(r=>r.c.due>0);
-  const head=['Sr No','Customer Name','Phone No','Contact Person','Outstanding','PDC','Total Due','Age (days)','Credit Days','Over Credit (days)','0-15','16-30','31-60','61-90','90+','Agent','Call Status','Agent Remark','Customer Remark','Next Follow-up','Follow-up With','PTP Date','PTP Amount','Payment Aaya (last upload)','Naya Customer','Last Update Time'];
-  const aoa=[head].concat(f.map((r,i)=>{ const c=r.c; return [i+1,c.name,firstPhone(c.phone),c.person||'',c.out,c.pdc,c.due,c.age??'',c.cdays??'',c.over??'',...c.b,r.agent||'',r.status||'',r.ar?r.ar.ar:'',r.cr?r.cr.cr:'',r.next||'',r.fu&&r.fu.with||'',r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'',c.paid||'',c.isNew?'Haan':'',r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'']; }));
+  const head=['Sr No','Customer Name','Phone No','Contact Person','Outstanding','PDC','Total Due','Age (days)','Credit Days','Over Credit (days)','0-15','16-30','31-60','61-90','90+','Agent','Call Status','Agent Remark','Customer Remark','Next Follow-up','Follow-up With','PTP Date','PTP Amount','Payment Aaya (last upload)','Naya Customer','Last Update Time','Escalated To','Escalation Reason','Escalated On'];
+  const aoa=[head].concat(f.map((r,i)=>{ const c=r.c; return [i+1,c.name,firstPhone(c.phone),c.person||'',c.out,c.pdc,c.due,c.age??'',c.cdays??'',c.over??'',...c.b,r.agent||'',r.status||'',r.ar?r.ar.ar:'',r.cr?r.cr.cr:'',r.next||'',r.fu&&r.fu.with||'',r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'',c.paid||'',c.isNew?'Haan':'',r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'',r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']; }));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=[6,34,14,20,13,11,13,9,9,10,11,11,11,11,11,18,15,40,40,13,12,11,11].map(w=>({wch:w}));
@@ -1221,6 +1303,8 @@ async function exportXlsx(){
   const d=D(); for(const [k,fu] of Object.entries(d.fu)) for(const l of (fu.logs||[])) lg.push([new Date(l.at).toLocaleString('en-IN'),fu.name||k,l.st,l.with||'',l.ar||'',l.cr||'',l.pd||'',l.pa||'',l.next||'']);
   const ws3=XLSX.utils.aoa_to_sheet(lg); ws3['!cols']=[20,34,15,12,40,40,11,11,13].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws3,'Follow-up Log');
+  const es=[['Customer','Agent','Escalated To','Reason','Escalated On','Days Open','Update Due','Total Due']].concat(rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at).map(r=>[r.c.name,r.agent||'',r.esc.to||'',r.esc.reason||'',new Date(r.esc.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(r.esc.at)),todayISO()),r.esc.upd||'',r.c.due]));
+  if(es.length>1){ const ws5=XLSX.utils.aoa_to_sheet(es); ws5['!cols']=[34,16,16,40,13,10,12,13].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws5,'Escalations'); }
   const dd=Object.values(d.days||{}).filter(x=>x&&x.byType).sort((a,b)=>b.date.localeCompare(a.date));
   if(dd.length){ const da=[['Date','Payment Aaya','PDC Se','Transaction Se','Customers Paid','Naye Customers','Clear Hue','Naya Sale','Total Due','Due Customers']].concat(dd.map(x=>{ const s=x.byType[S.type]||{}; return [x.date,s.paid,s.pdcPaid||0,s.txnPaid??'',s.paidN,s.newN,s.clearN,s.sales,s.due,s.n]; }));
     const ws4=XLSX.utils.aoa_to_sheet(da); ws4['!cols']=[12,14,12,14,14,14,11,13,14,13].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws4,'Roz ka hisaab'); }
@@ -1277,6 +1361,8 @@ function makeDemo(){
   if(c[9]) set(c[9],[mkLog(0,'Promise To Pay','Customer','Dealer se baat hui','Cheque kal dega',addDays(t,1),addDays(t,1),Math.min(25000,c[9].due))]);
   if(c[10]) set(c[10],[mkLog(0,'Not Answer','Customer','','',addDays(t,1))]);
   if(c[11]) set(c[11],[mkLog(0,'Wrong No','Agent','Number badalna hai','',addDays(t,1))]);
+  if(c[3]&&fu[c[3].k]){ fu[c[3].k].esc={at:Date.now()-2*DAY,to:'Manager',reason:'Rate difference – CN pending',upd:addDays(t,-1),by:null}; fu[c[3].k].escHist=[{at:Date.now()-2*DAY,act:'raise',to:'Manager',reason:'Rate difference – CN pending',upd:addDays(t,-1)}]; }
+  if(c[5]&&fu[c[5].k]){ fu[c[5].k].esc={at:Date.now()-6*36e5,to:'Accounts Head',reason:'Payment adjust nahi hua',upd:addDays(t,2),by:null}; fu[c[5].k].escHist=[{at:Date.now()-6*36e5,act:'raise',to:'Accounts Head',reason:'Payment adjust nahi hua',upd:addDays(t,2)}]; }
   return {customers:custs, meta:{ver:1,at:Date.now(),today:t,prevAt:Date.now()-2*DAY,files:{out:'sample'},cleared:clearedD}, fu, days};
 }
 
@@ -1293,16 +1379,18 @@ document.addEventListener('click',e=>{
     else if(act==='demo'){ S.demoData=makeDemo(); S.demo=true; S.card='all'; $('#main').innerHTML=''; render(); }
     else if(act==='exitdemo'){ S.demo=false; closeDrawer(); $('#main').innerHTML=''; render(); }
     else if(act==='dens'){ S.dense=!S.dense; document.body.classList.toggle('dense',!!S.dense); try{ localStorage.setItem('cdense',S.dense?'1':''); }catch(e){} }
+    else if(act==='escdone') escDone(a.dataset.k);
     else if(act==='clearf'){ S.card='all'; S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge(); render(); }
     return; }
   if(e.target.closest('[data-stop]')) return;
-  const go=e.target.closest('[data-go]'); if(go){ const [gt,gv]=go.dataset.go.split(':'); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
-    if(gt==='card'){ S.card=gv; S.view='list'; }
+  const go=e.target.closest('[data-go]'); if(go){ const gi=go.dataset.go.indexOf(':'), gt=go.dataset.go.slice(0,gi), gv=go.dataset.go.slice(gi+1); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
+    if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; }
     else if(gt==='bk'){ S.card='all'; S.bk=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
     else if(gt==='plus'){ S.card='all'; S.plus=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
+    else if(gt==='tw'){ S.card='any'; S.tw=gv; S.sort={k:'lastcall',d:-1}; S.view='list'; }
     else if(gt==='view'){ S.view=gv; }
     render(); window.scrollTo({top:0}); return; }
-  const cd=e.target.closest('[data-card]'); if(cd){ S.card=cd.dataset.card; resetAge(); S.view='list'; render(); return; }
+  const cd=e.target.closest('[data-card]'); if(cd){ S.card=cd.dataset.card; resetAge(); if(S.card==='esc') S.sort={k:'escat',d:1}; S.view='list'; render(); return; }
   const tb=e.target.closest('.tabs [data-view], .dl[data-view]'); if(tb){ S.view=tb.dataset.view; render(); return; }
   const so=e.target.closest('[data-sort]'); if(so){ const k=so.dataset.sort; S.sort = S.sort.k===k?{k,d:-S.sort.d}:{k,d:(k==='name'||k==='agent'||k==='next'||k==='status')?1:-1}; render(); return; }
   const ag=e.target.closest('[data-agent]'); if(ag){ S.agent=ag.dataset.agent; S.view='list'; S.card='all'; resetAge(); render(); window.scrollTo({top:0}); return; }
