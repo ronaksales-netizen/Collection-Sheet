@@ -204,6 +204,11 @@ button.kpi:hover{border-color:var(--faint)}
 .mp{margin:0 0 8px;color:var(--muted);font-size:13px}
 
 .more{margin-top:8px}
+.kpi.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.xlbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.xlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 10px}
+.xlgrid label{display:flex;gap:8px;align-items:center;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+.xlgrid label:hover{border-color:var(--faint)}
 .addr{margin:6px 0 0;font-size:13px;color:var(--ink);line-height:1.4;padding-right:40px}
 .addr.none{color:var(--faint)}
 .trkrow{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--line-2)}
@@ -360,6 +365,17 @@ details.settings summary{cursor:pointer;font-weight:700;font-size:14px}
     <div class="mfoot"><button class="btn" id="upCancel">Cancel</button><button class="btn primary" id="upGo" disabled>Process karke save karein</button></div>
   </div>
 </div>
+<div class="modal" id="xlModal" role="dialog" aria-modal="true" aria-labelledby="xlTitle">
+  <div class="mbox" style="width:min(680px,100%)">
+    <header><h2 id="xlTitle">Excel mein kaun se columns chahiye?</h2><button class="btn small" id="xlClose">Band karein</button></header>
+    <div class="mb">
+      <div class="xlbar"><button class="btn small" id="xlAll" type="button">Sab chunein</button><button class="btn small" id="xlNone" type="button">Sab hatayein</button><span class="muted" id="xlCount"></span></div>
+      <div class="xlgrid" id="xlGrid"></div>
+      <p class="mp" style="margin:12px 0 0">Sr No hamesha rahega. Ye choice sirf main sheet par lagegi, baaki sheets poori aayengi. Aapki choice yaad rahegi.</p>
+    </div>
+    <div class="mfoot"><button class="btn" id="xlCancel" type="button">Cancel</button><button class="btn primary" id="xlGo" type="button">Excel download karein</button></div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -502,7 +518,7 @@ function defSettings(){ return {
 const S = {
   real:{customers:[],meta:null,fu:{},days:{}}, demoData:null, demo:false,
   settings:defSettings(), backend:'none', loaded:false, readOnly:false,
-  view:'dash', type:'agent', bk:null, plus:null, tw:null, trkTab:null, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
+  view:'dash', type:'agent', bk:null, plus:null, tw:null, trkTab:null, trkBox:null, _ready:{cust:false,fu:false,set:false}, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
 };
 const D = ()=>S.demo?S.demoData:S.real;
 let db=null, user=null, uid=null, dl=null;
@@ -660,10 +676,11 @@ function twOk(r){ const ls=twLogs(r); if(!ls.length) return false; const t=S.tw;
   if(t==='all') return true;
   if(t==='conn') return ls.some(l=>!['Not Answer','Not Responded','Wrong No'].includes(l.st));
   if(t==='prom') return ls.some(l=>l.ss==='Promise To Pay');
+  if(t&&t.startsWith('sub:')){ const x=t.slice(4); return ls.some(l=>l.ss===x&&l.st!=='Language Barrier'); }
   if(t&&t.startsWith('ss:')){ const [a,b]=t.slice(3).split('|'); return ls.some(l=>l.st===a&&l.ss===b); }
   if(t&&t.startsWith('st:')) return ls.some(l=>l.st===t.slice(3));
   return false; }
-function twLabel(){ const t=S.tw; if(!t) return ''; const m={all:'Aaj jin customers se baat / update hua',conn:'Aaj baat hui (connected)',prom:'Aaj promise mile'}; return m[t]||('Aaj – '+t.replace(/^(st|ss):/,'').replace('|',' – ')); }
+function twLabel(){ const t=S.tw; if(!t) return ''; const m={all:'Aaj jin customers se baat / update hua',conn:'Aaj baat hui (connected)',prom:'Aaj promise mile'}; return m[t]||('Aaj – '+t.replace(/^(st|ss|sub):/,'').replace('|',' – ')); }
 function filtered(rows){
   const card=CARDS.find(x=>x.k===S.card)||CARDS[0];
   const q=S.q.trim().toLowerCase();
@@ -773,7 +790,7 @@ function dashHTML(rows){
   const NOCON=['Not Answer','Not Responded','Wrong No'];
   const conn=tl.filter(x=>!NOCON.includes(x.l.st)).length;
   const prom=tl.filter(x=>x.l.ss==='Promise To Pay'), promAmt=prom.reduce((s,x)=>s+(x.l.pa||0),0);
-  const byst=new Map(); tl.forEach(x=>{ const key=x.l.st+'|'+(x.l.ss||''); byst.set(key,(byst.get(key)||0)+1); });
+  const byst=new Map(); tl.forEach(x=>{ const lb=x.l.st==='Language Barrier', key=lb?'Language Barrier':(x.l.ss||x.l.st); const o=byst.get(key)||{n:0,st:x.l.st,lb}; o.n++; byst.set(key,o); });
 
   /* follow-up */
   const dueT=act.filter(r=>r.isToday), late=act.filter(r=>r.isLate);
@@ -831,7 +848,7 @@ function dashHTML(rows){
 
   const work=`<div class="sec dsec"><h3>Aaj ka kaam <small>${fmtD(t)}</small></h3>
     <div class="kpis">${kpi('acc',tl.length,'Call / update log hue','tw:all',cm.size+' customers')}${kpi('',cm.size,'Customers se baat','tw:all',inrS(contAmt)+' due')}${kpi('good',conn,'Baat hui (connected)','tw:conn')}${kpi('',prom.length,'Promise mile','tw:prom',inrS(promAmt))}</div>
-    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:13px;align-items:center">${[...byst.entries()].sort((a,b)=>b[1]-a[1]).map(([key,n])=>{ const [a,b]=key.split('|'); return `<button type="button" class="chipbtn" data-go="tw:ss:${esc(key)}" title="In customers ki list kholein">${chip(a)}${b&&b!==a?` <span class="muted" style="font-size:12.5px">${esc(b)}</span>`:''} <b>${n}</b></button>`; }).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
+    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:13px;align-items:center">${[...byst.entries()].sort((a,b)=>b[1].n-a[1].n).map(([key,o])=>`<button type="button" class="chipbtn" data-go="${o.lb?'tw:st:Language Barrier':'tw:sub:'+esc(key)}" title="In customers ki list kholein">${chip2(key,o.st)} <b>${o.n}</b></button>`).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
 
   const zf=[];
   const fup=`<div class="sec dsec"><h3>Aaj ke follow-up <small>${dueT.length} baaki</small></h3>
@@ -848,18 +865,30 @@ function dashHTML(rows){
   const tabs=[{k:'esc',l:'Escalation',n:escRows.length,bad:escLate.length,bl:'late'},{k:'visit',l:'Visit',n:visitRows.length,bad:visitP.length,bl:'pending'},{k:'cn',l:'Credit Note',n:cnRows.length,bad:cnNew.length,bl:'naya'}];
   const tab=S.trkTab&&tabs.find(x=>x.k===S.trkTab)?S.trkTab:(tabs.find(x=>x.n>0)||tabs[0]).k;
   const orphHTML=kind=>{ const o=orph(kind); return o.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${kind==='esc'?'escalation':kind==='visit'?'visit':'credit note'} chalu hai:</p><ul class="cl">${o.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${kind==='esc'?esc(x.x.to||'—')+' – '+esc((x.x.reason||'').slice(0,70)):trkLabel(kind,x.x.st)}</span></span>${kind==='esc'?`<button class="btn small" data-act="escdone" data-k="${esc(x.k)}">Hatayein</button>`:`<span class="tbtns"><button class="btn small" data-act="trk" data-k="${esc(x.k)}" data-t="${kind}" data-s="done">Band karein</button></span>`}</li>`).join('')}</ul>`:''; };
-  const trkList=(arr,kind)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>{ const T=r[kind]; return `<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – <b>${trkLabel(kind,T.st)}</b> – ${ago(T.at)} din se</span></span><span class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</span></li>`; }).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${kind}">Sab ${arr.length} dekhein</button>`:''}`:'';
+  const trkList=(arr,kind,see)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>{ const T=r[kind]; return `<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – <b>${trkLabel(kind,T.st)}</b> – ${ago(T.at)} din se</span></span><span class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</span></li>`; }).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${see}">Sab ${arr.length} dekhein</button>`:''}`:`<p class="mp">Is box mein abhi koi customer nahi hai.</p>`;
+  const escList=(arr,see)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${ago(r.esc.at)} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${see}">Sab ${arr.length} dekhein</button>`:''}`:`<p class="mp">Is box mein abhi koi customer nahi hai.</p>`;
+  const tbox=(key,cls,n,l,sub)=>`<button type="button" class="kpi ${cls||''} ${S.trkBox===key?'on':''}" data-go="trkbox:${key}" aria-pressed="${S.trkBox===key}"><b>${n}</b><span>${l}</span>${sub?`<span class="s2">${sub}</span>`:''}</button>`;
+  const TL={'esc:all':'Escalation chalu','esc:late':'Escalation – update late','esc:today':'Aaj lagaye','visit:pending':'Visit Pending','visit:raised':'Visit Raised','visit:all':'Visit – total chalu','cn:new':'Credit Note – Naya','cn:return':'Return Raised','cn:pickup':'Pickup Done','cn:all':'Credit Note – total chalu'};
+  const SEE={'esc:all':'esc','esc:late':'esclate','esc:today':'esc','visit:pending':'visitp','visit:raised':'visit','visit:all':'visit','cn:new':'cnnew','cn:return':'cn','cn:pickup':'cn','cn:all':'cn'};
+  const tbList=key=>{ switch(key){ case 'esc:all':return escRows; case 'esc:late':return escLate; case 'esc:today':return escRows.filter(r=>r.esc.at>=T0); case 'visit:pending':return visitP; case 'visit:raised':return visitRows.filter(r=>r.visit.st==='raised'); case 'visit:all':return visitRows; case 'cn:new':return cnNew; case 'cn:return':return cnRows.filter(r=>r.cn.st==='return'); case 'cn:pickup':return cnRows.filter(r=>r.cn.st==='pickup'); case 'cn:all':return cnRows; } return []; };
   let panel='';
-  if(tab==='esc'){
-    panel=`<div class="kpis">${kpi('bad',escRows.length,'Escalation chalu','card:esc',inrS(sumD(escRows))+' due')}${kpi('bad',escLate.length,'Update late','card:esclate')}${kpi('',escToday,'Aaj lagaye')}</div>
-    ${escRows.length?`<ul class="cl">${escRows.slice(0,6).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${ago(r.esc.at)} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${escRows.length>6?`<button class="btn small more" data-go="card:esc">Sab ${escRows.length} dekhein</button>`:''}`:`<p class="mp">Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.</p>`}${orphHTML('esc')}`;
-  } else if(tab==='visit'){
-    panel=`<div class="kpis">${kpi('bad',visitP.length,'Visit Pending','card:visitp')}${kpi('',visitRows.filter(r=>r.visit.st==='raised').length,'Raised','card:visit')}${kpi('',visitRows.length,'Total chalu','card:visit')}</div>
-    ${visitRows.length?trkList(visitRows,'visit'):`<p class="mp">Koi visit chalu nahi hai. Connected → Visit Raise ya Not Responded → Visit Req log karte hi customer yahan aa jayega.</p>`}${orphHTML('visit')}`;
+  const openKey=S.trkBox&&S.trkBox.startsWith(tab+':')?S.trkBox:null;
+  const HINT={esc:'Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.',visit:'Koi visit chalu nahi hai. Connected → Visit Raise ya Not Responded → Visit Req log karte hi customer yahan aa jayega.',cn:'Koi Credit Note chalu nahi hai. Connected → Credit Note log karte hi customer yahan aa jayega.'};
+  let boxes='';
+  if(tab==='esc') boxes=`<div class="kpis">${tbox('esc:all','bad',escRows.length,'Escalation chalu',inrS(sumD(escRows))+' due')}${tbox('esc:late','bad',escLate.length,'Update late')}${tbox('esc:today','',escToday,'Aaj lagaye')}</div>`;
+  else if(tab==='visit') boxes=`<div class="kpis">${tbox('visit:pending','bad',visitP.length,'Visit Pending')}${tbox('visit:raised','',visitRows.filter(r=>r.visit.st==='raised').length,'Raised')}${tbox('visit:all','',visitRows.length,'Total chalu')}</div>`;
+  else boxes=`<div class="kpis">${tbox('cn:new','bad',cnNew.length,'Naya (return raise nahi hua)')}${tbox('cn:return','',cnRows.filter(r=>r.cn.st==='return').length,'Return Raised')}${tbox('cn:pickup','',cnRows.filter(r=>r.cn.st==='pickup').length,'Pickup Done')}${tbox('cn:all','',cnRows.length,'Total chalu')}</div>`;
+  let lst='';
+  if(openKey){
+    const arr=tbList(openKey);
+    lst=`<p class="mp" style="margin-top:4px"><b style="color:var(--ink)">${TL[openKey]}</b> – ${arr.length} customers · <button type="button" class="linkbtn" data-go="trkbox:${openKey}">Band karein</button></p>${tab==='esc'?escList(arr,SEE[openKey]):trkList(arr,tab,SEE[openKey])}${openKey.endsWith(':all')?orphHTML(tab):''}`;
   } else {
-    panel=`<div class="kpis">${kpi('bad',cnNew.length,'Naya (return raise nahi hua)','card:cnnew')}${kpi('',cnRows.filter(r=>r.cn.st==='return').length,'Return Raised','card:cn')}${kpi('',cnRows.filter(r=>r.cn.st==='pickup').length,'Pickup Done','card:cn')}</div>
-    ${cnRows.length?trkList(cnRows,'cn'):`<p class="mp">Koi Credit Note chalu nahi hai. Connected → Credit Note log karte hi customer yahan aa jayega.</p>`}${orphHTML('cn')}`;
+    const o=orph(tab), tot=tabs.find(x=>x.k===tab).n;
+    if(o.length) lst=`<p class="mp"><b>${o.length} customer ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${tab==='esc'?'escalation':tab==='visit'?'visit':'credit note'} chalu hai. <button type="button" class="linkbtn" data-go="trkbox:${tab}:all">Dekhein</button></p>`;
+    else if(!tot) lst=`<p class="mp">${HINT[tab]}</p>`;
+    else lst=`<p class="mp">Kisi bhi box par click karke us ke customers dekhein.</p>`;
   }
+  panel=boxes+lst;
   const trkCard=`<div class="sec dsec" style="margin-bottom:12px"><h3>Trackers <small>Escalation, Visit aur Credit Note ek jagah</small></h3>
     <div class="tabs trk" role="tablist">${tabs.map(x=>`<button role="tab" type="button" aria-selected="${x.k===tab}" data-go="trktab:${x.k}">${x.l}<span class="badge">${x.n}</span>${x.bad?`<span class="badge bad">${x.bad} ${x.bl}</span>`:''}</button>`).join('')}</div>${panel}</div>`;
 
@@ -881,7 +910,7 @@ function dashHTML(rows){
     ${clearedL.length?`<ul class="cl">${clearedL.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${esc(x.agent||'—')}</span></span><b class="neg">${inr(x.prevOut)}</b></li>`).join('')}</ul>`:''}`:noPrev}</div>`;
 
   const calls=`<div class="sec dsec"><h3>Aaj pehle in customers ko call karein <small>aaj ke follow-up pehle, phir jinhe call nahi hua</small></h3>
-    ${callList.length?`<ul class="cl">${callList.map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – ${r.c.age!=null?r.c.age+' din':'–'}${r.status?' – '+esc(r.status+(r.sub&&r.sub!==r.status?' – '+r.sub:'')):(r.notCalled?' – abhi tak call nahi':'')}${r.cb?' – call back '+new Date(r.cb).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'}):''}</span></span><b>${inr(r.c.due)}</b></li>`).join('')}</ul>${callTotal>8?`<button class="btn small more" data-go="card:${cl1.length?'today':'never'}">Sab ${callTotal} dekhein</button>`:''}`:`<p class="mp">Aaj ke liye koi follow-up baaki nahi hai. Upar Ageing se "30+ din" ya "90+ din" kholkar naye follow-up shuru kar sakte ho.</p>`}</div>`;
+    ${callList.length?`<ul class="cl">${callList.map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – ${r.c.age!=null?r.c.age+' din':'–'}${r.status?' – '+esc(r.status+(r.sub&&r.sub!==r.status&&r.status!=='Language Barrier'?' – '+r.sub:'')):(r.notCalled?' – abhi tak call nahi':'')}${r.cb?' – call back '+new Date(r.cb).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'}):''}</span></span><b>${inr(r.c.due)}</b></li>`).join('')}</ul>${callTotal>8?`<button class="btn small more" data-go="card:${cl1.length?'today':'never'}">Sab ${callTotal} dekhein</button>`:''}`:`<p class="mp">Aaj ke liye koi follow-up baaki nahi hai. Upar Ageing se "30+ din" ya "90+ din" kholkar naye follow-up shuru kar sakte ho.</p>`}</div>`;
 
   const ag=`<div class="sec dsec"><h3>Agent-wise (aaj) <small>pending follow-up ke hisaab se</small></h3>
     <div style="overflow-x:auto"><table class="mini" style="min-width:420px"><thead><tr><th>Agent</th><th class="num">Customers</th><th class="num">Aaj baaki</th><th class="num">Aaj calls</th><th class="num">30+ din</th></tr></thead><tbody>${agents.map(x=>`<tr data-agent="${esc(x.a)}" style="cursor:pointer"><td><b>${esc(x.a)}</b></td><td class="num">${x.n}</td><td class="num ${x.pend?'over':''}">${x.pend||'–'}</td><td class="num">${x.calls||'–'}</td><td class="num">${inrS(x.old)}</td></tr>`).join('')}</tbody></table></div></div>`;
@@ -920,7 +949,7 @@ function renderFilters(rows){
   const fq=$('#fq'); if(document.activeElement!==fq) fq.value=S.q;
   const agents=[...new Set(rows.map(r=>r.agent||'—'))].sort();
   $('#fagent').innerHTML='<option value="">Sab agents</option>'+agents.map(a=>`<option ${S.agent===a?'selected':''}>${esc(a)}</option>`).join('');
-  $('#fstatus').innerHTML='<option value="">Sab call status</option><option value="_none" '+(S.status==='_none'?'selected':'')+'>Status nahi</option>'+STATUSES.map(s=>`<optgroup label="${s.v}"><option value="${s.v}" ${S.status===s.v?'selected':''}>Sab ${s.v}</option>${s.subs.map(x=>`<option value="ss:${s.v}|${x}" ${S.status==='ss:'+s.v+'|'+x?'selected':''}>${s.v} – ${x}</option>`).join('')}</optgroup>`).join('');
+  $('#fstatus').innerHTML='<option value="">Sab call status</option><option value="_none" '+(S.status==='_none'?'selected':'')+'>Status nahi</option>'+STATUSES.map(s=>`<optgroup label="${s.v}"><option value="${s.v}" ${S.status===s.v?'selected':''}>Sab ${s.v}</option>${(s.v==='Language Barrier'?[]:s.subs).map(x=>`<option value="ss:${s.v}|${x}" ${S.status==='ss:'+s.v+'|'+x?'selected':''}>${s.v} – ${x}</option>`).join('')}</optgroup>`).join('');
   $('#fbucket').innerHTML='<option value="">Sabse purana bill: sab</option>'+BUCKETS.map((b,i)=>`<option value="${i}" ${S.bucket===String(i)?'selected':''}>${b} din</option>`).join('');
   $('#filters').style.display=S.view==='list'?'':'none';
 }
@@ -929,6 +958,7 @@ function stripHTML(c){
   const title=BUCKETS.map((b,i)=>b+': '+inr(c.b[i])).join('\n')+(c.bu?'\nDate nahi: '+inr(c.bu):'');
   return `<div class="strip" title="${esc(title)}" aria-label="${esc(title)}">${c.b.map((v,i)=>`<i class="${v>0?'on':''}" style="--c:${BVARS[i]};${v>0?'opacity:'+(0.45+0.55*Math.min(1,v/tot*1.6)).toFixed(2):''}"></i>`).join('')}</div>`;
 }
+function chip2(label,st){ return `<span class="chip" style="--c:${SCOL[st]||'#6B7588'}">${esc(label)}</span>`; }
 function chip(s){ return s?`<span class="chip" style="--c:${SCOL[s]||'#6B7588'}">${esc(s)}</span>`:'<span class="chip none">Status nahi</span>'; }
 function trkLines(r){
   let h='';
@@ -969,7 +999,7 @@ function listHTML(rows){
     const ptp = r.sub==='Promise To Pay'&&r.fu.ptp?`<span class="sub">${inrS(r.fu.ptp.amount)} – ${fmtD(r.fu.ptp.date)}</span>`:'';
     return `<tr data-open="${esc(c.k)}" tabindex="0"${S.open===c.k?' class="sel"':''}>
       <td class="muted">${i+1}</td>
-      <td><span class="cname">${esc(c.name)}</span>${S.tw?`<span class="sub" style="color:var(--accent);font-weight:600">${twLogs(r).map(l=>esc(l.st+(l.ss&&l.ss!==l.st?' – '+l.ss:''))+' – '+new Date(l.at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})).join(' · ')}</span>`:''}${r.esc?`<span class="sub" style="color:var(--bad);font-weight:600">→ ${esc(r.esc.to||'')}: ${esc((r.esc.reason||'').slice(0,60))} (${Math.max(0,daysBetween(iso(new Date(r.esc.at)),todayISO()))} din se)</span>`:''}${(S.card==='esc'||S.card==='esclate')&&r.esc?`<button class="btn small" style="margin-top:4px" data-act="escdone" data-k="${esc(c.k)}">Update mila – hatayein</button>`:''}${trkLines(r)}${flags?'<div>'+flags+'</div>':''}</td>
+      <td><span class="cname">${esc(c.name)}</span>${S.tw?`<span class="sub" style="color:var(--accent);font-weight:600">${twLogs(r).map(l=>esc(l.st+(l.ss&&l.ss!==l.st&&l.st!=='Language Barrier'?' – '+l.ss:''))+' – '+new Date(l.at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})).join(' · ')}</span>`:''}${r.esc?`<span class="sub" style="color:var(--bad);font-weight:600">→ ${esc(r.esc.to||'')}: ${esc((r.esc.reason||'').slice(0,60))} (${Math.max(0,daysBetween(iso(new Date(r.esc.at)),todayISO()))} din se)</span>`:''}${(S.card==='esc'||S.card==='esclate')&&r.esc?`<button class="btn small" style="margin-top:4px" data-act="escdone" data-k="${esc(c.k)}">Update mila – hatayein</button>`:''}${trkLines(r)}${flags?'<div>'+flags+'</div>':''}</td>
       <td style="white-space:nowrap">${c.phone?esc(firstPhone(c.phone)):'<span class="muted">–</span>'}</td>
       <td class="num">${inr(c.out)}</td>
       <td class="num">${c.pdc?inr(c.pdc):'<span class="muted">–</span>'}</td>
@@ -977,7 +1007,7 @@ function listHTML(rows){
       <td class="num">${c.age!=null?c.age:'–'}${c.over!=null&&c.over>0?`<span class="sub over">+${c.over} credit se upar</span>`:''}</td>
       <td>${stripHTML(c)}</td>
       <td>${esc(r.agent||'—')}</td>
-      <td>${chip(r.status)}${r.sub&&r.sub!==r.status?`<span class="sub" style="color:var(--ink);font-weight:600">${esc(r.sub)}</span>`:''}${ptp}${lastHTML(r)}</td>
+      <td>${chip(r.status)}${r.sub&&r.sub!==r.status&&r.status!=='Language Barrier'?`<span class="sub" style="color:var(--ink);font-weight:600">${esc(r.sub)}</span>`:''}${ptp}${lastHTML(r)}</td>
       <td class="rem">${r.ar?`<span class="t">${esc(r.ar.ar)}</span><span class="d">${fmtDT(r.ar.at)}</span>`:'<span class="muted">–</span>'}</td>
       <td class="rem">${r.cr?`<span class="t">${esc(r.cr.cr)}</span><span class="d">${fmtDT(r.cr.at)}</span>`:'<span class="muted">–</span>'}</td>
       <td>${nextHTML(r)}</td>
@@ -1247,7 +1277,7 @@ async function renderTimeline(r){
   const canDel=l=>!S.readOnly&&(S.demo||!db||!l.by||l.by===uid);
   ul.innerHTML=logs.map((l,i)=>`<li style="--c:${SCOL[l.st]||'#6B7588'}">
     <div class="when">Baat hui: <b style="color:var(--ink)">${fmtDT(l.at)}</b>${names[l.by]?' – '+esc(names[l.by]):''}${l.sv&&Math.abs(l.sv-l.at)>30*6e4?` <span title="Entry kab likhi gayi">(likha ${fmtDT(l.sv)})</span>`:''}${i===0&&canDel(l)?`<button class="del" data-dellog="${l.at}">Galat hai, hatayein</button>`:''}</div>
-    <div style="margin-top:3px">${chip(l.st)} ${l.ss&&l.ss!==l.st?`<b style="font-size:12.5px">${esc(l.ss)}</b> · `:''}<span class="muted" style="font-size:12.5px">${esc(l.with||'')} se${l.next?' – next '+fmtD(l.next):''}</span></div>
+    <div style="margin-top:3px">${chip(l.st)} ${l.ss&&l.ss!==l.st&&l.st!=='Language Barrier'?`<b style="font-size:12.5px">${esc(l.ss)}</b> · `:''}<span class="muted" style="font-size:12.5px">${esc(l.with||'')} se${l.next?' – next '+fmtD(l.next):''}</span></div>
     ${l.cb?`<div class="r">Call back: <b style="color:var(--ink);font-size:13px">${fmtDT(new Date(l.cb).getTime())}</b></div>`:''}
     ${l.ss==='Promise To Pay'&&l.pd?`<div class="r">Promise: <b style="color:var(--ink);font-size:13px">${inr(l.pa)}</b> – ${fmtD(l.pd)}</div>`:''}
     ${l.ar?`<div class="r"><b>Agent remark:</b> ${esc(l.ar)}</div>`:''}
@@ -1298,6 +1328,34 @@ async function escDone(k){
   const note=prompt('Update / resolution note likhein (khali chhod sakte hain).\nOK dabate hi escalation hat jayega:'); if(note===null) return;
   try{ await saveEsc(c,'resolve',{note:note.trim()}); toast('Escalation hata diya'); if(S.open===k) renderEsc(curRow()); render(); }
   catch(err){ toast('Nahi hua: '+(err.code||err.message)); }
+}
+function maybeMigrate(){
+  if(S._migDone||S.demo||S.readOnly) return;
+  if(db){ const r=S._ready; if(!(r.cust&&r.fu&&r.set)) return; }
+  if(S.settings.trkMig){ S._migDone=true; return; }
+  if(!S.real.customers.length) return;
+  S._migDone=true; migrateTrackers();
+}
+async function migrateTrackers(){
+  const d=S.real, byK=new Map(d.customers.map(c=>[c.k,c])), tasks=[]; let nv=0, nc=0;
+  for(const [k,f] of Object.entries(d.fu||{})){
+    const c=byK.get(k); if(!c||!(c.due>0)||!f||!(f.logs&&f.logs.length)) continue;
+    const L=f.logs.map(normLog).sort((a,b)=>a.at-b.at).slice(-1)[0];
+    const isV=(L.st==='Connected'&&L.ss==='Visit Raise')||(L.st==='Not Responded'&&L.ss==='Visit Req');
+    const isC=L.st==='Connected'&&L.ss==='Credit Note';
+    if(!isV&&!isC) continue;
+    const mk=st=>({on:true,st,at:L.at,srcAt:L.at,src:'Purana log: '+L.st+' – '+L.ss,upAt:Date.now(),hist:[{at:Date.now(),st:'open',note:'Purane log se tracker mein joda gaya'}],mig:true});
+    const doc={...f}; let ch=false;
+    if(isV&&!f.visit){ doc.visit=mk('pending'); nv++; ch=true; }
+    if(isC&&!f.cn){ doc.cn=mk('new'); nc++; ch=true; }
+    if(ch) tasks.push([k,doc]);
+  }
+  try{
+    for(const [k,doc] of tasks){ if(db) await db.doc('followups/'+k).set(doc); d.fu[k]=doc; }
+    S.settings.trkMig=true; await saveSettings();
+    if(tasks.length){ toast('Purane logs se jode gaye: '+nv+' Visit, '+nc+' Credit Note'); }
+    render();
+  }catch(err){ S._migDone=false; toast('Tracker update nahi hua ('+(err.code||err.message)+')'); }
 }
 async function saveTrk(c, kind, st, note){
   const cur=clone(D().fu[c.k]); const T=cur[kind]; if(!T) return; const now=Date.now();
@@ -1350,20 +1408,20 @@ function localLoad(){
 function subscribe(){
   db.doc('meta/current').onSnapshot(async snap=>{
     const m=snap.exists?snap.data():null;
-    if(!m){ S.real.meta=null; S.real.customers=[]; S.loaded=true; render(); return; }
+    if(!m){ S.real.meta=null; S.real.customers=[]; S.loaded=true; S._ready.cust=true; render(); return; }
     if(S.real.meta && S.real.meta.ver===m.ver && S.real.customers.length){ return; }
     try{
       const parts=await Promise.all(Array.from({length:m.chunks||0},(_,i)=>db.doc('snap/c'+i).get()));
       const cs=[]; parts.forEach(p=>{ if(p.exists) cs.push(...(p.data().customers||[])); });
       S.real.meta=m; S.real.customers=cs;
     }catch(e){ toast('Data load nahi hua – page reload karein'); }
-    S.loaded=true; render();
+    S.loaded=true; render(); S._ready.cust=true; maybeMigrate();
   }, e=>{ S.loaded=true; toast('Data load nahi hua ('+e.code+')'); render(); });
   db.collection('followups').onSnapshot(snap=>{
-    const fu={}; snap.docs.forEach(d=>{ fu[d.id]=d.data(); }); S.real.fu=fu; render();
+    const fu={}; snap.docs.forEach(d=>{ fu[d.id]=d.data(); }); S.real.fu=fu; render(); S._ready.fu=true; maybeMigrate();
   }, e=>toast('Follow-ups load nahi hue ('+e.code+')'));
   db.collection('days').onSnapshot(snap=>{ const ds={}; snap.docs.forEach(d=>{ ds[d.id]=d.data(); }); S.real.days=ds; render(); }, ()=>{});
-  db.doc('meta/settings').get().then(s=>{ if(s.exists) S.settings={...defSettings(),...s.data()}; }).catch(()=>{});
+  db.doc('meta/settings').get().then(s=>{ if(s.exists) S.settings={...defSettings(),...s.data()}; S._ready.set=true; maybeMigrate(); }).catch(()=>{ S._ready.set=true; maybeMigrate(); });
 }
 
 /* ============ upload ============ */
@@ -1478,11 +1536,50 @@ async function processUpload(){
 }
 
 /* ============ excel ============ */
-async function exportXlsx(){
+const XCOLS=[
+  {k:'name',l:'Customer Name',h:['Customer Name'],v:r=>[r.c.name]},
+  {k:'phone',l:'Phone No',h:['Phone No'],v:r=>[firstPhone(r.c.phone)]},
+  {k:'person',l:'Contact Person',h:['Contact Person'],v:r=>[r.c.person||'']},
+  {k:'addr',l:'Address',h:['Address'],v:r=>[fmtAddr(r.c.addr)]},
+  {k:'out',l:'Outstanding',h:['Outstanding'],v:r=>[r.c.out]},
+  {k:'pdc',l:'PDC',h:['PDC'],v:r=>[r.c.pdc]},
+  {k:'due',l:'Total Due',h:['Total Due'],v:r=>[r.c.due]},
+  {k:'age',l:'Age (days)',h:['Age (days)'],v:r=>[r.c.age??'']},
+  {k:'cdays',l:'Credit Days',h:['Credit Days'],v:r=>[r.c.cdays??'']},
+  {k:'over',l:'Over Credit (days)',h:['Over Credit (days)'],v:r=>[r.c.over??'']},
+  {k:'bk',l:'Ageing buckets (0-15 se 90+)',h:['0-15','16-30','31-60','61-90','90+'],v:r=>r.c.b},
+  {k:'agent',l:'Agent',h:['Agent'],v:r=>[r.agent||'']},
+  {k:'status',l:'Call Status',h:['Call Status'],v:r=>[r.status||'']},
+  {k:'sub',l:'Sub Status',h:['Sub Status'],v:r=>[r.sub||'']},
+  {k:'ar',l:'Agent Remark',h:['Agent Remark'],v:r=>[r.ar?r.ar.ar:'']},
+  {k:'cr',l:'Customer Remark',h:['Customer Remark'],v:r=>[r.cr?r.cr.cr:'']},
+  {k:'next',l:'Next Follow-up',h:['Next Follow-up'],v:r=>[r.next||'']},
+  {k:'with',l:'Follow-up With',h:['Follow-up With'],v:r=>[r.fu&&r.fu.with||'']},
+  {k:'ptp',l:'PTP Date aur Amount',h:['PTP Date','PTP Amount'],v:r=>[r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'']},
+  {k:'paid',l:'Payment Aaya (last upload)',h:['Payment Aaya (last upload)'],v:r=>[r.c.paid||'']},
+  {k:'isnew',l:'Naya Customer',h:['Naya Customer'],v:r=>[r.c.isNew?'Haan':'']},
+  {k:'last',l:'Last Update Time',h:['Last Update Time'],v:r=>[r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'']},
+  {k:'esc',l:'Escalation (kisko, reason, kab)',h:['Escalated To','Escalation Reason','Escalated On'],v:r=>[r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']},
+  {k:'visit',l:'Visit Stage',h:['Visit Stage'],v:r=>[r.visit?trkLabel('visit',r.visit.st):'']},
+  {k:'cn',l:'Credit Note Stage',h:['Credit Note Stage'],v:r=>[r.cn?trkLabel('cn',r.cn.st):'']}
+];
+function xlSaved(){ try{ const j=JSON.parse(localStorage.getItem('cdcols')||'null'); if(Array.isArray(j)) return j; }catch(e){} return S.xlCols||null; }
+function xlSel(){ return [...document.querySelectorAll('#xlGrid input:checked')].map(i=>i.value); }
+function xlCount(){ const n=xlSel().length; $('#xlCount').textContent=n+' / '+XCOLS.length+' columns chune'; $('#xlGo').disabled=!n; }
+function closeXl(){ $('#xlModal').classList.remove('on'); }
+function openXl(){
+  if(!window.XLSX){ toast('Excel library load nahi hui – internet check karein'); return; }
+  const saved=xlSaved(), ok=saved&&saved.filter(k=>XCOLS.some(x=>x.k===k));
+  const set=new Set(ok&&ok.length?ok:XCOLS.map(x=>x.k));
+  $('#xlGrid').innerHTML=XCOLS.map(x=>`<label><input type="checkbox" value="${x.k}" ${set.has(x.k)?'checked':''}>${esc(x.l)}</label>`).join('');
+  xlCount(); $('#xlModal').classList.add('on');
+}
+async function exportXlsx(sel){
   if(!window.XLSX){ toast('Excel library load nahi hui – internet check karein'); return; }
   const rows=allRows(); const f=S.view==='list'?filtered(rows):rows.filter(r=>r.c.due>0);
-  const head=['Sr No','Customer Name','Phone No','Contact Person','Outstanding','PDC','Total Due','Age (days)','Credit Days','Over Credit (days)','0-15','16-30','31-60','61-90','90+','Agent','Call Status','Sub Status','Agent Remark','Customer Remark','Next Follow-up','Follow-up With','PTP Date','PTP Amount','Payment Aaya (last upload)','Naya Customer','Last Update Time','Escalated To','Escalation Reason','Escalated On'];
-  const aoa=[head].concat(f.map((r,i)=>{ const c=r.c; return [i+1,c.name,firstPhone(c.phone),c.person||'',c.out,c.pdc,c.due,c.age??'',c.cdays??'',c.over??'',...c.b,r.agent||'',r.status||'',r.sub||'',r.ar?r.ar.ar:'',r.cr?r.cr.cr:'',r.next||'',r.fu&&r.fu.with||'',r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'',c.paid||'',c.isNew?'Haan':'',r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'',r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']; }));
+  const chosen=(sel&&sel.length)?XCOLS.filter(x=>sel.includes(x.k)):XCOLS;
+  const head=['Sr No'].concat(chosen.flatMap(x=>x.h));
+  const aoa=[head].concat(f.map((r,i)=>[i+1].concat(chosen.flatMap(x=>x.v(r)))));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols']=head.map(x=>({wch:/Name/.test(x)?34:/Remark|Reason/.test(x)?40:14}));
@@ -1521,7 +1618,7 @@ function restore(){
     try{ const j=JSON.parse(await f.text()); if(!j||!Array.isArray(j.customers)) throw new Error('Ye Collection Desk backup file nahi hai');
       if(!confirm('Is browser ka abhi ka data backup se replace ho jayega. Aage badhein?')) return;
       S.real={customers:j.customers,meta:j.meta||null,fu:j.fu||{},days:j.days||{}}; if(j.settings) S.settings={...defSettings(),...j.settings};
-      localSave(); $('#main').innerHTML=''; render(); toast('Backup restore ho gaya');
+      localSave(); $('#main').innerHTML=''; render(); S._migDone=false; maybeMigrate(); toast('Backup restore ho gaya');
     }catch(e){ toast('Restore nahi hua: '+e.message); } };
   inp.click();
 }
@@ -1579,7 +1676,7 @@ document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');
   if(a){ const act=a.dataset.act;
     if(act==='upload') openUpload();
-    else if(act==='xlsx') exportXlsx();
+    else if(act==='xlsx') openXl();
     else if(act==='backup') backup();
     else if(act==='restore') restore();
     else if(act==='demo'){ S.demoData=makeDemo(); S.demo=true; S.card='all'; $('#main').innerHTML=''; render(); }
@@ -1591,7 +1688,8 @@ document.addEventListener('click',e=>{
     else if(act==='clearf'){ S.card='all'; S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge(); render(); }
     return; }
   if(e.target.closest('[data-stop]')) return;
-  const go=e.target.closest('[data-go]'); if(go&&go.dataset.go.startsWith('trktab:')){ S.trkTab=go.dataset.go.slice(7); render(); return; }
+  const go=e.target.closest('[data-go]'); if(go&&go.dataset.go.startsWith('trktab:')){ S.trkTab=go.dataset.go.slice(7); S.trkBox=null; render(); return; }
+  if(go&&go.dataset.go.startsWith('trkbox:')){ const key=go.dataset.go.slice(7); S.trkBox=(S.trkBox===key?null:key); S.trkTab=key.split(':')[0]; render(); return; }
   if(go){ const gi=go.dataset.go.indexOf(':'), gt=go.dataset.go.slice(0,gi), gv=go.dataset.go.slice(gi+1); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
     if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; if(['visit','visitp','cn','cnnew'].includes(gv)) S.sort={k:'trkat',d:1}; }
     else if(gt==='bk'){ S.card='all'; S.bk=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
@@ -1607,7 +1705,7 @@ document.addEventListener('click',e=>{
   const op=e.target.closest('[data-open]'); if(op){ openDrawer(op.dataset.open); return; }
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ if($('#upModal').classList.contains('on')) closeUpload(); else if(S.open) closeDrawer(); }
+  if(e.key==='Escape'){ if($('#xlModal').classList.contains('on')) closeXl(); else if($('#upModal').classList.contains('on')) closeUpload(); else if(S.open) closeDrawer(); }
   if(e.key==='Enter' && e.target.matches('tr[data-open]')) openDrawer(e.target.dataset.open);
   if(S.open && !$('#upModal').classList.contains('on')){
     const typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
@@ -1627,19 +1725,24 @@ document.addEventListener('change',e=>{
 $('#scrim').onclick=closeDrawer; $('#dClose').onclick=closeDrawer;
 try{ if(localStorage.getItem('cdense')){ S.dense=true; document.body.classList.add('dense'); } }catch(e){}
 $('#upClose').onclick=closeUpload; $('#upCancel').onclick=closeUpload; $('#upGo').onclick=processUpload;
+$('#xlClose').onclick=closeXl; $('#xlCancel').onclick=closeXl;
+$('#xlAll').onclick=()=>{ document.querySelectorAll('#xlGrid input').forEach(i=>i.checked=true); xlCount(); };
+$('#xlNone').onclick=()=>{ document.querySelectorAll('#xlGrid input').forEach(i=>i.checked=false); xlCount(); };
+$('#xlGrid').onchange=xlCount;
+$('#xlGo').onclick=async()=>{ const sel=xlSel(); if(!sel.length) return; S.xlCols=sel; try{ localStorage.setItem('cdcols',JSON.stringify(sel)); }catch(e){} closeXl(); await exportXlsx(sel); };
 
 /* ============ boot ============ */
 render();
 (async function boot(){
   const C=window.claude;
-  if(!C||typeof C.use!=='function'){ S.backend='local'; localLoad(); S.loaded=true; render(); return; }
+  if(!C||typeof C.use!=='function'){ S.backend='local'; localLoad(); S.loaded=true; maybeMigrate(); render(); return; }
   let d=null;
   try{ [d,user,dl]=await Promise.all([C.use('db'),C.use('user'),C.use('downloads')]); }catch(e){}
   if(d){
     db=d; S.backend='db';
     if(user){ try{ uid=await user.id(); }catch(e){} try{ const can=await user.can('data.write'); if(can===false) S.readOnly=true; }catch(e){} }
     subscribe();
-  } else { S.backend='local'; localLoad(); S.loaded=true; }
+  } else { S.backend='local'; localLoad(); S.loaded=true; maybeMigrate(); }
   render();
 })();
 </script>
