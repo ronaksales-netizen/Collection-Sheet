@@ -202,7 +202,39 @@ button.kpi:hover{border-color:var(--faint)}
 .cl button:hover{text-decoration:underline}
 .cl .sub{display:block}
 .mp{margin:0 0 8px;color:var(--muted);font-size:13px}
+
 .more{margin-top:8px}
+.addr{margin:6px 0 0;font-size:13px;color:var(--ink);line-height:1.4;padding-right:40px}
+.addr.none{color:var(--faint)}
+.trkrow{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--line-2)}
+.trkrow:last-child{border-bottom:0}
+.trkrow .sub{display:block}
+.tbtns{display:flex;gap:6px;flex-wrap:wrap}
+#trkBox:empty{display:none}
+.bigs{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:12px}
+.big{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);display:block;width:100%;cursor:pointer}
+.big:hover{border-color:var(--faint)}
+.big b{display:block;font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.big .l{display:block;font-size:13px;font-weight:700;margin-top:3px}
+.big .s3{display:block;font-size:12px;color:var(--muted);margin-top:5px}
+.dlt{display:inline-block;font-size:12px;font-weight:700;margin-right:6px}
+.dgood{color:var(--good)}.dbad{color:var(--bad)}
+.okline{margin:8px 0 0;font-size:12.5px;color:var(--good);font-weight:600}
+.alertbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:color-mix(in srgb,var(--bad) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--bad) 40%,transparent);border-radius:12px;padding:9px 12px;margin-bottom:12px;font-size:13.5px}
+.alertbar button{border:1px solid color-mix(in srgb,var(--bad) 50%,transparent);background:var(--surface);color:var(--bad);font-weight:700;border-radius:999px;padding:3px 11px;font-size:12.5px;cursor:pointer}
+.alertbar button b{margin-right:4px}
+.agebar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.ageseg{flex:var(--g) 1 92px;min-width:0;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px 9px;display:block;cursor:pointer;overflow:hidden}
+.ageseg:hover{border-color:var(--faint)}
+.ageseg i{display:block;height:8px;border-radius:4px;background:var(--c);margin-bottom:7px}
+.ageseg .t{display:block;font-weight:700;font-size:12.5px}
+.ageseg b{display:block;font-size:16px}
+.ageseg .s{display:block;font-size:11.5px;color:var(--muted)}
+.age3{display:flex;gap:8px;flex-wrap:wrap}
+.tabs.trk{margin-bottom:10px;flex-wrap:wrap}
+.tabs .badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:5px;border-radius:9px;background:var(--surface-2);font-size:11.5px;font-weight:700;color:var(--ink);text-align:center}
+.tabs button[aria-selected="true"] .badge{background:rgba(255,255,255,.22);color:var(--bg)}
+.tabs .badge.bad{background:var(--bad);color:#fff}
 .escon{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 6%,var(--surface))}
 .eh{list-style:none;margin:8px 0;padding:0;font-size:12.5px;color:var(--muted)}
 .eh li{padding:3px 0;border-bottom:1px dashed var(--line-2)}
@@ -314,6 +346,7 @@ details.settings summary{cursor:pointer;font-weight:700;font-size:14px}
   <div class="dhead" id="dHead"></div>
   <div class="dbody">
     <div class="sec" id="escBox"></div>
+    <div class="sec" id="trkBox"></div>
     <form class="sec" id="logForm" autocomplete="off"></form>
     <div class="sec"><h3>Follow-up history</h3><ul class="tl" id="dTimeline"></ul></div>
     <div id="dInfo"></div>
@@ -335,18 +368,39 @@ const DAY = 864e5;
 const BUCKETS = ['0–15','16–30','31–60','61–90','90+'];
 const BVARS = ['var(--b0)','var(--b1)','var(--b2)','var(--b3)','var(--b4)'];
 const STATUSES = [
-  {v:'Not Answer',     c:'#6B7588', next:1},
-  {v:'Connected',      c:'#2B8A78', next:3},
-  {v:'Promise To Pay', c:'#6A4FD6', next:null},
-  {v:'Wrong No',       c:'#DB6727', next:1,  w:'Agent'},
-  {v:'Credit Note',    c:'#2F6FBF', next:2,  w:'Accounts'},
-  {v:'Legal',          c:'#C42F3A', next:15},
-  {v:'Visit Req',      c:'#B07A12', next:2,  w:'Agent'},
-  {v:'Not Responded',  c:'#86629C', next:2},
-  {v:'Dispute',        c:'#9A6234', next:3},
-  {v:'Paid',           c:'#1F8A4C', next:null}
+  {v:'Connected',        c:'#2B8A78', subs:['Call Back','Visit Raise','Credit Note','Dispute','Paid','Scheme Issue','Other Issue','Promise To Pay','Legal']},
+  {v:'Not Answer',       c:'#6B7588', subs:['Call Back']},
+  {v:'Wrong No',         c:'#DB6727', subs:['Wrong No']},
+  {v:'Not Responded',    c:'#86629C', subs:['Visit Req']},
+  {v:'Language Barrier', c:'#2F6FBF', subs:['Hindi','English','Tamil','Gujarati','Marathi','Other']}
 ];
 const SCOL = Object.fromEntries(STATUSES.map(s=>[s.v,s.c]));
+/* n = next follow-up din (null = date alag se, '' = koi nahi), w = follow-up kisse */
+const SUBRULE = {
+  'Connected|Call Back':{n:null,w:'Customer'}, 'Connected|Visit Raise':{n:2,w:'Agent'}, 'Connected|Credit Note':{n:2,w:'Accounts'},
+  'Connected|Dispute':{n:3,w:'Customer'}, 'Connected|Paid':{n:'',w:'Customer'}, 'Connected|Scheme Issue':{n:3,w:'Accounts'},
+  'Connected|Other Issue':{n:3,w:'Customer'}, 'Connected|Promise To Pay':{n:null,w:'Customer'}, 'Connected|Legal':{n:15,w:'Accounts'},
+  'Not Answer|Call Back':{n:1,w:'Customer'}, 'Wrong No|Wrong No':{n:1,w:'Agent'}, 'Not Responded|Visit Req':{n:2,w:'Agent'},
+  'Language Barrier|*':{n:2,w:'Customer'}
+};
+function subRule(st,ss){ return SUBRULE[st+'|'+ss]||SUBRULE[st+'|*']||{n:3,w:'Customer'}; }
+/* purane logs (sirf status) ko naye format mein badalna – history nahi jaati */
+const OLD_MAP = {'Not Answer':['Not Answer','Call Back'],'Connected':['Connected','Other Issue'],'Promise To Pay':['Connected','Promise To Pay'],'Credit Note':['Connected','Credit Note'],'Dispute':['Connected','Dispute'],'Paid':['Connected','Paid'],'Legal':['Connected','Legal'],'Visit Req':['Connected','Visit Raise'],'Wrong No':['Wrong No','Wrong No'],'Not Responded':['Not Responded','Visit Req']};
+function normLog(l){ if(l.ss!=null) return l; const m=OLD_MAP[l.st]; return m?{...l,st:m[0],ss:m[1],_old:1}:{...l,ss:''}; }
+function naStreak(logs){ let n=0; for(let i=logs.length-1;i>=0;i--){ if(logs[i].st==='Not Answer') n++; else break; } return n; }
+const TRK = {
+  visit:{label:'Visit', stages:[['pending','Visit Pending'],['raised','Raised'],['done','Visit Done']]},
+  cn:{label:'Credit Note', stages:[['new','Naya'],['return','Return Raised'],['pickup','Pickup Done'],['done','CN Done']]}
+};
+function trkLabel(kind,st){ const x=TRK[kind].stages.find(s=>s[0]===st); return x?x[1]:st; }
+function trkNext(kind,st){ const s=TRK[kind].stages, i=s.findIndex(x=>x[0]===st); return i>=0?(s[i+1]||null):null; }
+function trkBtnsHTML(k,kind,st){
+  const nx=trkNext(kind,st); if(!nx) return '';
+  const last=TRK[kind].stages[TRK[kind].stages.length-1];
+  let h=`<button class="btn small" type="button" data-act="trk" data-k="${esc(k)}" data-t="${kind}" data-s="${nx[0]}">→ ${nx[1]}</button>`;
+  if(nx[0]!==last[0]) h+=`<button class="btn small ghost" type="button" data-act="trk" data-k="${esc(k)}" data-t="${kind}" data-s="done">${last[1]}</button>`;
+  return h;
+}
 const WITHS = ['Customer','Agent','Accounts'];
 
 const FIELDS = {
@@ -357,6 +411,7 @@ const FIELDS = {
     {k:'mobile',label:'Mobile', kw:['mobile','mobile no']},
     {k:'phone', label:'Phone', kw:['phone','phone no','contact no']},
     {k:'person',label:'Contact person', kw:['person','contact person']},
+    {k:'addr',  label:'Address', kw:['address','addr']},
     {k:'credit',label:'Credit days', kw:['credit days','credit period','cr days']}
   ],
   sales: [
@@ -447,7 +502,7 @@ function defSettings(){ return {
 const S = {
   real:{customers:[],meta:null,fu:{},days:{}}, demoData:null, demo:false,
   settings:defSettings(), backend:'none', loaded:false, readOnly:false,
-  view:'dash', type:'agent', bk:null, plus:null, tw:null, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
+  view:'dash', type:'agent', bk:null, plus:null, tw:null, trkTab:null, card:'all', q:'', agent:'', status:'', bucket:'', sort:{k:'due',d:-1}, open:null
 };
 const D = ()=>S.demo?S.demoData:S.real;
 let db=null, user=null, uid=null, dl=null;
@@ -497,7 +552,7 @@ function buildCustomers(src, prev, settings, today, opts={}){
     const pdc=active.reduce((s,x)=>s+x.a,0);
     const ph=firstPhone(r.mobile)||firstPhone(r.phone);
     custs.push({
-      k, name:String(r.name).trim(), phone:ph, phone2:(r.phone&&firstPhone(r.phone)!==ph)?firstPhone(r.phone):'', person:r.person||'',
+      k, name:String(r.name).trim(), phone:ph, phone2:(r.phone&&firstPhone(r.phone)!==ph)?firstPhone(r.phone):'', person:r.person||'', addr:String(r.addr||'').replace(/\s+/g,' ').trim(),
       agent:fixA(grp.name), agentPhone:grp.phone, type:grp.type, cdays,
       out:r0(bal), pdc:r0(pdc), due:r0(bal-pdc), age:bal>0?age:null, over:(bal>0&&age!=null&&cdays!=null)?age-cdays:null,
       b:b.map(r0), op:r0(op), opFrom:op?hist:null, n:pend.length,
@@ -523,14 +578,14 @@ function buildCustomers(src, prev, settings, today, opts={}){
 }
 function summarize(custs, cleared, type){
   const cs=custs.filter(c=>typeOk(c,type)&&c.out>0), cl=(cleared||[]).filter(x=>typeOk(x,type));
-  const s={paid:0,paidN:0,newN:0,newAmt:0,downN:0,upN:0,clearN:cl.length,clearAmt:0,sales:0,due:0,n:0,pdcPaid:0,pdcN:0,nowN:0,prevN:0};
+  const s={paid:0,paidN:0,newN:0,newAmt:0,downN:0,upN:0,clearN:cl.length,clearAmt:0,sales:0,due:0,n:0,pdcPaid:0,pdcN:0,nowN:0,prevN:0,old30:0};
   for(const c of cs){
     if(c.paid>0){ s.paid+=c.paid; s.paidN++; }
     if(c.pdcCl>0){ s.pdcPaid+=c.pdcCl; s.pdcN++; }
     if(c.isNew){ s.newN++; s.newAmt+=c.out; }
     s.nowN++;
     if(c.prevOut>0){ s.prevN++; if(c.out<c.prevOut-1) s.downN++; else if(c.out>c.prevOut+1) s.upN++; }
-    s.sales+=c.ns||0; if(c.due>0){ s.due+=c.due; s.n++; }
+    s.sales+=c.ns||0; if(c.due>0){ s.due+=c.due; s.n++; s.old30+=bAmt(c,2); }
   }
   for(const x of cl){ s.paid+=x.prevOut; s.paidN++; s.clearAmt+=x.prevOut; s.prevN++; if(x.pdcCl>0){ s.pdcPaid+=x.pdcCl; s.pdcN++; } }
   s.txnPaid=Math.max(0,s.paid-s.pdcPaid);
@@ -540,23 +595,26 @@ function summarize(custs, cleared, type){
 
 /* ============ derived view ============ */
 function derive(c, fu, today, meta){
-  const logs=((fu&&fu.logs)||[]).slice().sort((a,b)=>a.at-b.at);
+  const logs=((fu&&fu.logs)||[]).map(normLog).sort((a,b)=>a.at-b.at);
   let ar=null, cr=null;
   for(let i=logs.length-1;i>=0;i--){ if(!ar&&logs[i].ar) ar=logs[i]; if(!cr&&logs[i].cr) cr=logs[i]; if(ar&&cr) break; }
-  const status=fu&&fu.status||null;
+  const last=logs.length?logs[logs.length-1]:null;
+  const status=last?last.st:null, sub=last?last.ss:null;
   const next=fu&&fu.next||null;
   const agent=(fu&&fu.agent)||c.agent||'';
   let ptpState=null;
-  if(fu&&fu.ptp&&status==='Promise To Pay'){
+  if(fu&&fu.ptp&&sub==='Promise To Pay'){
     const paidEnough = c.due <= (fu.ptp.dueAt - fu.ptp.amount + 1);
     const uploadDay = meta&&meta.today;
     if(paidEnough) ptpState='kept';
     else if(today>fu.ptp.date && uploadDay && uploadDay>fu.ptp.date) ptpState='broken';
     else ptpState='open';
   }
-  const active = c.due>0 && status!=='Paid';
+  const active = c.due>0 && sub!=='Paid';
   return {
-    c, fu, logs, status, next, agent, ar, cr, ptpState, esc:(fu&&fu.esc)||null, escH:(fu&&fu.escHist)||[],
+    c, fu, logs, status, sub, next, agent, ar, cr, ptpState, esc:(fu&&fu.esc)||null, escH:(fu&&fu.escHist)||[],
+    visit:(fu&&fu.visit&&fu.visit.on)?fu.visit:null, cn:(fu&&fu.cn&&fu.cn.on)?fu.cn:null,
+    cb:(last&&last.cb&&last.next===last.cb.slice(0,10))?last.cb:null,
     isToday: active && next && next<=today,
     isLate: active && next && next<today,
     notCalled: c.due>0 && !logs.length && (c.age||0) > (c.cdays??30),
@@ -580,27 +638,32 @@ const CARDS = [
   {k:'pdc',   l:'PDC is hafte', c:'var(--b0)', f:r=>r.pdcWeek},
   {k:'chq',   l:'PDC mein dikkat', c:'var(--b3)', f:r=>r.chq},
   {k:'esc',   l:'Escalation chalu', c:'var(--bad)', f:r=>!!r.esc},
+  {k:'visit', l:'Visit chalu', c:'var(--b2)', f:r=>!!r.visit},
+  {k:'cn', l:'Credit Note chalu', c:'var(--b3)', f:r=>!!r.cn},
+  {k:'visitp', l:'Visit pending', hide:1, f:r=>!!r.visit&&r.visit.st==='pending'},
+  {k:'cnnew', l:'Credit Note naya (return raise nahi hua)', hide:1, f:r=>!!r.cn&&r.cn.st==='new'},
   {k:'esclate', l:'Escalation update late', hide:1, f:r=>!!r.esc&&!!r.esc.upd&&r.esc.upd<todayISO()},
   {k:'paid',  l:'Payment aaya', hide:1, f:r=>r.c.paid>0},
   {k:'new',   l:'Naye add hue', hide:1, f:r=>r.c.isNew},
   {k:'down',  l:'Due kam hua', hide:1, f:r=>r.c.prevOut>0&&r.c.out<r.c.prevOut-1},
   {k:'up',    l:'Due badha', hide:1, f:r=>r.c.prevOut>0&&r.c.out>r.c.prevOut+1},
   {k:'any',   l:'Sab', hide:1, f:r=>true},
-  {k:'ptpt',  l:'Aaj ke promise', hide:1, f:r=>r.status==='Promise To Pay'&&!!r.fu&&!!r.fu.ptp&&r.fu.ptp.date===todayISO()&&r.ptpState==='open'}
+  {k:'ptpt',  l:'Aaj ke promise', hide:1, f:r=>r.sub==='Promise To Pay'&&!!r.fu&&!!r.fu.ptp&&r.fu.ptp.date===todayISO()&&r.ptpState==='open'}
 ];
 function bAmt(c,from,to=4){ let s=0; for(let i=from;i<=to;i++) s+=c.b[i]||0; return s; }
 function bkAmt(r){ return S.bk!=null?(r.c.b[S.bk]||0):S.plus!=null?bAmt(r.c,S.plus):0; }
 function bkLabel(){ if(S.bk!=null) return 'Ageing '+BUCKETS[S.bk]+' din wale'; if(S.plus!=null) return ({2:'30+ din (31 din se upar)',3:'60+ din (61 din se upar)',4:'90+ din'})[S.plus]+' – sabhi customers'; return ''; }
 function bkShort(){ if(S.bk!=null) return BUCKETS[S.bk]; return ({2:'30+',3:'60+',4:'90+'})[S.plus]||''; }
-function resetAge(){ S.bk=null; S.plus=null; S.tw=null; if(S.sort.k==='bamt'||S.sort.k==='lastcall'||S.sort.k==='escat') S.sort={k:'due',d:-1}; }
+function resetAge(){ S.bk=null; S.plus=null; S.tw=null; if(S.sort.k==='bamt'||S.sort.k==='lastcall'||S.sort.k==='escat'||S.sort.k==='trkat') S.sort={k:'due',d:-1}; }
 function twLogs(r){ const d=new Date(); d.setHours(0,0,0,0); const T0=d.getTime(); return r.logs.filter(l=>l.at>=T0); }
 function twOk(r){ const ls=twLogs(r); if(!ls.length) return false; const t=S.tw;
   if(t==='all') return true;
   if(t==='conn') return ls.some(l=>!['Not Answer','Not Responded','Wrong No'].includes(l.st));
-  if(t==='prom') return ls.some(l=>l.st==='Promise To Pay');
+  if(t==='prom') return ls.some(l=>l.ss==='Promise To Pay');
+  if(t&&t.startsWith('ss:')){ const [a,b]=t.slice(3).split('|'); return ls.some(l=>l.st===a&&l.ss===b); }
   if(t&&t.startsWith('st:')) return ls.some(l=>l.st===t.slice(3));
   return false; }
-function twLabel(){ const t=S.tw; if(!t) return ''; const m={all:'Aaj jin customers se baat / update hua',conn:'Aaj baat hui (connected)',prom:'Aaj promise mile'}; return m[t]||('Aaj – '+t.slice(3)); }
+function twLabel(){ const t=S.tw; if(!t) return ''; const m={all:'Aaj jin customers se baat / update hua',conn:'Aaj baat hui (connected)',prom:'Aaj promise mile'}; return m[t]||('Aaj – '+t.replace(/^(st|ss):/,'').replace('|',' – ')); }
 function filtered(rows){
   const card=CARDS.find(x=>x.k===S.card)||CARDS[0];
   const q=S.q.trim().toLowerCase();
@@ -609,13 +672,13 @@ function filtered(rows){
   if(S.plus!=null) out=out.filter(r=>bAmt(r.c,S.plus)>0);
   if(S.tw) out=out.filter(twOk);
   if(S.agent) out=out.filter(r=>(r.agent||'—')===S.agent);
-  if(S.status) out=out.filter(r=>S.status==='_none'?!r.status:r.status===S.status);
+  if(S.status) out=out.filter(r=>S.status==='_none'?!r.status:S.status.startsWith('ss:')?((r.status+'|'+r.sub)===S.status.slice(3)):r.status===S.status);
   if(S.bucket!=='') out=out.filter(r=>r.c.age!=null && bucketOf(r.c.age)===+S.bucket);
   if(q) out=out.filter(r=>(r.c.name+' '+r.c.phone+' '+r.agent+' '+(r.c.person||'')).toLowerCase().includes(q));
   const {k,d}=S.sort;
   const val=r=>{ switch(k){
     case 'name': return r.c.name.toLowerCase(); case 'out': return r.c.out; case 'pdc': return r.c.pdc;
-    case 'escat': return r.esc?r.esc.at:9e15; case 'lastcall': return r.logs.length?r.logs[r.logs.length-1].at:0; case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
+    case 'trkat': return (S.card==='cn'||S.card==='cnnew')?(r.cn?r.cn.at:9e15):(r.visit?r.visit.at:9e15); case 'escat': return r.esc?r.esc.at:9e15; case 'lastcall': return r.logs.length?r.logs[r.logs.length-1].at:0; case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
     case 'status': return r.status||''; case 'next': return r.next||'9999'; default: return r.c.due; } };
   out.sort((a,b)=>{ const x=val(a), y=val(b); return (x<y?-1:x>y?1:0)*d; });
   return out;
@@ -696,9 +759,12 @@ function dashHTML(rows){
   const act=rows.filter(r=>r.c.due>0);
   const sumD=a=>a.reduce((s,r)=>s+Math.max(0,r.c.due),0);
   const kpi=(cls,n,l,go,sub)=>{ const tg=go?'button':'div'; return `<${tg} ${go?`type="button" data-go="${go}"`:''} class="kpi ${cls||''}"><b>${n}</b><span>${l}</span>${sub?`<span class="s2">${sub}</span>`:''}</${tg}>`; };
+  const zk=(zs,cls,n,l,go,sub)=>{ if(!n){ zs.push(l); return ''; } return kpi(cls,n,l,go,sub); };
+  const okline=zs=>zs.length?`<p class="okline">✓ Koi nahi: ${zs.join(', ')}</p>`:'';
   const nm=r=>`<button data-open="${esc(r.c.k)}">${esc(r.c.name)}</button>`;
   const has=!!(m&&m.prevAt);
   const stale=m?daysBetween(m.today||iso(new Date(m.at)),t):0;
+  const ago=ms=>Math.max(0,daysBetween(iso(new Date(ms)),t));
 
   /* aaj ka kaam */
   const tl=[]; for(const r of rows) for(const l of r.logs) if(l.at>=T0) tl.push({r,l});
@@ -706,8 +772,8 @@ function dashHTML(rows){
   const contAmt=sumD([...cm.values()]);
   const NOCON=['Not Answer','Not Responded','Wrong No'];
   const conn=tl.filter(x=>!NOCON.includes(x.l.st)).length;
-  const prom=tl.filter(x=>x.l.st==='Promise To Pay'), promAmt=prom.reduce((s,x)=>s+(x.l.pa||0),0);
-  const byst={}; tl.forEach(x=>{ byst[x.l.st]=(byst[x.l.st]||0)+1; });
+  const prom=tl.filter(x=>x.l.ss==='Promise To Pay'), promAmt=prom.reduce((s,x)=>s+(x.l.pa||0),0);
+  const byst=new Map(); tl.forEach(x=>{ const key=x.l.st+'|'+(x.l.ss||''); byst.set(key,(byst.get(key)||0)+1); });
 
   /* follow-up */
   const dueT=act.filter(r=>r.isToday), late=act.filter(r=>r.isLate);
@@ -723,7 +789,16 @@ function dashHTML(rows){
 
   /* ageing */
   const BKS=BUCKETS.map((b,i)=>{ const rs=act.filter(r=>r.c.b[i]>0); return {i,l:b,n:rs.length,amt:rs.reduce((x,r)=>x+r.c.b[i],0)}; });
-  const PL=[2,3,4].map(i=>{ const rs=act.filter(r=>bAmt(r.c,i)>0); return {i,l:{2:'30+ din',3:'60+ din',4:'90+ din'}[i],sub:{2:'31 din se upar',3:'61 din se upar',4:'90 din se upar'}[i],n:rs.length,amt:rs.reduce((x,r)=>x+bAmt(r.c,i),0)}; });
+  const PL=[2,3,4].map(i=>{ const rs=act.filter(r=>bAmt(r.c,i)>0); return {i,l:{2:'30+ din',3:'60+ din',4:'90+ din'}[i],n:rs.length,amt:rs.reduce((x,r)=>x+bAmt(r.c,i),0)}; });
+  const totAmt=BKS.reduce((x,b)=>x+b.amt,0)||1;
+
+  /* trackers */
+  const escRows=rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at);
+  const escLate=escRows.filter(r=>r.esc.upd&&r.esc.upd<t), escToday=escRows.filter(r=>r.esc.at>=T0).length;
+  const visitRows=rows.filter(r=>r.visit).sort((a,b)=>a.visit.at-b.visit.at), visitP=visitRows.filter(r=>r.visit.st==='pending');
+  const cnRows=rows.filter(r=>r.cn).sort((a,b)=>a.cn.at-b.cn.at), cnNew=cnRows.filter(r=>r.cn.st==='new');
+  const orph=kind=>Object.entries(d.fu).filter(([k,f])=>f&&(kind==='esc'?f.esc:(f[kind]&&f[kind].on))&&!d.customers.some(c=>c.k===k)).map(([k,f])=>({k,name:f.name||k,x:kind==='esc'?f.esc:f[kind]}));
+  const chqN=rows.filter(CARDS.find(x=>x.k==='chq').f).length;
 
   /* extras */
   const cl1=dueT.slice().sort((a,b)=>b.c.due-a.c.due), cl2=act.filter(r=>r.notCalled&&!r.isToday).sort((a,b)=>b.c.due-a.c.due);
@@ -732,20 +807,61 @@ function dashHTML(rows){
   for(const r of act){ const a=r.agent||'—'; const x=A.get(a)||{a,n:0,due:0,pend:0,calls:0,old:0}; x.n++; x.due+=r.c.due; if(r.isToday) x.pend++; x.old+=bAmt(r.c,2); A.set(a,x); }
   for(const x of tl){ const y=A.get(x.r.agent||'—'); if(y) y.calls++; }
   const agents=[...A.values()].sort((a,b)=>b.pend-a.pend||b.due-a.due).slice(0,8);
-  const days=Object.values(d.days||{}).filter(x=>x&&x.byType&&x.prevAt).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+  const allDays=Object.values(d.days||{}).filter(x=>x&&x.byType).sort((a,b)=>a.date.localeCompare(b.date));
+  const days=allDays.filter(x=>x.prevAt).slice(-7);
   const mx=Math.max(1,...days.map(x=>(x.byType[S.type]||{}).paid||0));
+  const dl=k=>{ if(allDays.length<2) return null; const a=allDays[allDays.length-1].byType[S.type], b=allDays[allDays.length-2].byType[S.type]; if(!a||!b||a[k]==null||b[k]==null) return null; return a[k]-b[k]; };
+  const arrow=(v,goodUp)=>{ if(v==null) return ''; if(Math.round(v)===0) return '<span class="dlt muted">koi badlav nahi</span>'; const up=v>0, good=goodUp?up:!up; return `<span class="dlt ${good?'dgood':'dbad'}">${up?'↑':'↓'} ${inrS(Math.abs(v))}</span>`; };
 
   const warn=stale>0?`<div class="warnbox"><b>Data ${stale===1?'kal':stale+' din pehle'} ka hai</b> (${fmtDT(m.at)}). Aaj ki TEJ sheets upload karein, tabhi aaj ka payment aur naye customers sahi dikhenge.</div>`:'';
   const noPrev=`<p class="mp">Agli baar nayi sheets upload karte hi yahan dikhega.</p>`;
 
+  /* 1. dhyan do */
+  const alerts=[[broken.length,'Promise toote','card:broken'],[late.length,'Follow-up late','card:late'],[escLate.length,'Escalation update late','card:esclate'],[visitP.length,'Visit pending','card:visitp'],[cnNew.length,'Credit Note naya','card:cnnew'],[chqN,'PDC mein dikkat','card:chq']].filter(x=>x[0]>0);
+  const alertBar=alerts.length?`<div class="alertbar" role="region" aria-label="Dhyan do"><b>Dhyan do:</b>${alerts.map(x=>`<button type="button" data-go="${x[2]}"><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>`:'';
+
+  /* 2. bade numbers */
+  const bigs=[
+    ['card:all',inrS(sumD(act)),'Total Due',arrow(dl('due'),false)+`<span>${act.length} customers</span>`],
+    ['card:paid',has?inrS(s.paid):'–','Payment aaya (pichhle upload se)',has?arrow(dl('paid'),true)+`<span>PDC ${inrS(s.pdcPaid)} · Txn ${inrS(s.txnPaid)}</span>`:'<span>Agle upload par dikhega</span>'],
+    ['card:today',dueT.length,'Aaj ke follow-up baaki',`<span>${done} ho chuke</span>`],
+    ['card:esc',escRows.length,'Escalation chalu',`<span>${escLate.length} update late</span>`],
+    ['plus:2',inrS(PL[0].amt),'30+ din ka due',arrow(dl('old30'),false)+`<span>${PL[0].n} customers</span>`]
+  ].map(x=>`<button type="button" class="big" data-go="${x[0]}"><b>${x[1]}</b><span class="l">${x[2]}</span><span class="s3">${x[3]}</span></button>`).join('');
+
   const work=`<div class="sec dsec"><h3>Aaj ka kaam <small>${fmtD(t)}</small></h3>
     <div class="kpis">${kpi('acc',tl.length,'Call / update log hue','tw:all',cm.size+' customers')}${kpi('',cm.size,'Customers se baat','tw:all',inrS(contAmt)+' due')}${kpi('good',conn,'Baat hui (connected)','tw:conn')}${kpi('',prom.length,'Promise mile','tw:prom',inrS(promAmt))}</div>
-    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;align-items:center">${Object.entries(byst).sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<button type="button" class="chipbtn" data-go="tw:st:${esc(k)}" title="In customers ki list kholein">${chip(k)} <b>${n}</b></button>`).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
+    ${tl.length?`<div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:13px;align-items:center">${[...byst.entries()].sort((a,b)=>b[1]-a[1]).map(([key,n])=>{ const [a,b]=key.split('|'); return `<button type="button" class="chipbtn" data-go="tw:ss:${esc(key)}" title="In customers ki list kholein">${chip(a)}${b&&b!==a?` <span class="muted" style="font-size:12.5px">${esc(b)}</span>`:''} <b>${n}</b></button>`; }).join('')}</div>`:`<p class="mp">Aaj abhi tak koi call log nahi hua. Neeche call list se customer kholkar pehla update daalein.</p>`}</div>`;
 
+  const zf=[];
   const fup=`<div class="sec dsec"><h3>Aaj ke follow-up <small>${dueT.length} baaki</small></h3>
     <div class="prog" role="progressbar" aria-label="Aaj ka kaam" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
     <p class="mp"><button type="button" class="linkbtn" data-go="tw:all">${done} customers ho chuke</button>, ${dueT.length} baaki – ${pct}% kaam complete</p>
-    <div class="kpis">${kpi('acc',dueT.length,'Aaj pending','card:today',inrS(sumD(dueT))+' due')}${kpi('bad',late.length,'Late (purani date)','card:late',inrS(sumD(late)))}${kpi('',ptpT.length,'Aaj ke promise','card:ptpt',inrS(ptpT.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}${kpi('bad',broken.length,'Promise toota','card:broken',inrS(broken.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}</div></div>`;
+    <div class="kpis">${kpi('acc',dueT.length,'Aaj pending','card:today',inrS(sumD(dueT))+' due')}${zk(zf,'bad',late.length,'Late follow-up','card:late',inrS(sumD(late)))}${zk(zf,'',ptpT.length,'Aaj ke promise','card:ptpt',inrS(ptpT.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}${zk(zf,'bad',broken.length,'Promise toota','card:broken',inrS(broken.reduce((x,r)=>x+(r.fu.ptp.amount||0),0)))}</div>${okline(zf)}</div>`;
+
+  /* ageing strip */
+  const ageing=`<div class="sec dsec" style="margin-bottom:12px"><h3>Ageing <small>Outstanding ${inrS(totAmt)} – kisi bhi hisse par click karein</small></h3>
+    <div class="agebar">${BKS.map(x=>{ const p=x.amt/totAmt*100; return `<button type="button" class="ageseg" data-go="bk:${x.i}" style="--c:${BVARS[x.i]};--g:${Math.max(4,p).toFixed(1)}"><i></i><span class="t">${x.l} din</span><b>${inrS(x.amt)}</b><span class="s">${p.toFixed(0)}% · ${x.n} customers</span></button>`; }).join('')}</div>
+    <div class="age3">${PL.map(x=>`<button type="button" class="btn small" data-go="plus:${x.i}"><b>${x.l}</b>&nbsp;${x.n} customers · ${inrS(x.amt)}</button>`).join('')}</div></div>`;
+
+  /* trackers card */
+  const tabs=[{k:'esc',l:'Escalation',n:escRows.length,bad:escLate.length,bl:'late'},{k:'visit',l:'Visit',n:visitRows.length,bad:visitP.length,bl:'pending'},{k:'cn',l:'Credit Note',n:cnRows.length,bad:cnNew.length,bl:'naya'}];
+  const tab=S.trkTab&&tabs.find(x=>x.k===S.trkTab)?S.trkTab:(tabs.find(x=>x.n>0)||tabs[0]).k;
+  const orphHTML=kind=>{ const o=orph(kind); return o.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${kind==='esc'?'escalation':kind==='visit'?'visit':'credit note'} chalu hai:</p><ul class="cl">${o.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${kind==='esc'?esc(x.x.to||'—')+' – '+esc((x.x.reason||'').slice(0,70)):trkLabel(kind,x.x.st)}</span></span>${kind==='esc'?`<button class="btn small" data-act="escdone" data-k="${esc(x.k)}">Hatayein</button>`:`<span class="tbtns"><button class="btn small" data-act="trk" data-k="${esc(x.k)}" data-t="${kind}" data-s="done">Band karein</button></span>`}</li>`).join('')}</ul>`:''; };
+  const trkList=(arr,kind)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>{ const T=r[kind]; return `<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – <b>${trkLabel(kind,T.st)}</b> – ${ago(T.at)} din se</span></span><span class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</span></li>`; }).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${kind}">Sab ${arr.length} dekhein</button>`:''}`:'';
+  let panel='';
+  if(tab==='esc'){
+    panel=`<div class="kpis">${kpi('bad',escRows.length,'Escalation chalu','card:esc',inrS(sumD(escRows))+' due')}${kpi('bad',escLate.length,'Update late','card:esclate')}${kpi('',escToday,'Aaj lagaye')}</div>
+    ${escRows.length?`<ul class="cl">${escRows.slice(0,6).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${ago(r.esc.at)} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${escRows.length>6?`<button class="btn small more" data-go="card:esc">Sab ${escRows.length} dekhein</button>`:''}`:`<p class="mp">Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.</p>`}${orphHTML('esc')}`;
+  } else if(tab==='visit'){
+    panel=`<div class="kpis">${kpi('bad',visitP.length,'Visit Pending','card:visitp')}${kpi('',visitRows.filter(r=>r.visit.st==='raised').length,'Raised','card:visit')}${kpi('',visitRows.length,'Total chalu','card:visit')}</div>
+    ${visitRows.length?trkList(visitRows,'visit'):`<p class="mp">Koi visit chalu nahi hai. Connected → Visit Raise ya Not Responded → Visit Req log karte hi customer yahan aa jayega.</p>`}${orphHTML('visit')}`;
+  } else {
+    panel=`<div class="kpis">${kpi('bad',cnNew.length,'Naya (return raise nahi hua)','card:cnnew')}${kpi('',cnRows.filter(r=>r.cn.st==='return').length,'Return Raised','card:cn')}${kpi('',cnRows.filter(r=>r.cn.st==='pickup').length,'Pickup Done','card:cn')}</div>
+    ${cnRows.length?trkList(cnRows,'cn'):`<p class="mp">Koi Credit Note chalu nahi hai. Connected → Credit Note log karte hi customer yahan aa jayega.</p>`}${orphHTML('cn')}`;
+  }
+  const trkCard=`<div class="sec dsec" style="margin-bottom:12px"><h3>Trackers <small>Escalation, Visit aur Credit Note ek jagah</small></h3>
+    <div class="tabs trk" role="tablist">${tabs.map(x=>`<button role="tab" type="button" aria-selected="${x.k===tab}" data-go="trktab:${x.k}">${x.l}<span class="badge">${x.n}</span>${x.bad?`<span class="badge bad">${x.bad} ${x.bl}</span>`:''}</button>`).join('')}</div>${panel}</div>`;
 
   const nw=`<div class="sec dsec"><h3>Naye customers add hue <small>${has?'pichhle upload ke baad':''}</small></h3>
     ${has?`<div class="kpis">${kpi('acc',newc.length,'Naye customers','card:new',inrS(s.newAmt)+' due')}</div>
@@ -758,18 +874,14 @@ function dashHTML(rows){
     ${payers.length?`<ul class="cl">${payers.map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')}</span></span><b class="neg">${inr(r.c.paid)}</b></li>`).join('')}</ul>`:''}
     <p class="mp" style="margin-top:8px">PDC register se jo cheque hat gaya, use PDC payment maana jaata hai; baaki payment Transaction. ${m.pdcFresh===false?'<b>Is upload mein PDC sheet nahi thi, isliye PDC wala hissa kam dikh sakta hai.</b>':''}</p>`:`<p class="mp">Kal ki sheets upload karte hi yahan dikhega ki kitna payment aaya, kitna PDC se aur kitna transaction se.</p>`}</div>`;
 
+  const zd=[];
   const dec=`<div class="sec dsec"><h3>Customers kam hue <small>${has?'nayi sheet ke hisaab se':''}</small></h3>
-    ${has?`<div class="kpis">${kpi('good',s.clearN,'Poora clear (list se hate)','view:changes',inrS(s.clearAmt))}${kpi('',s.downN,'Due kam hua','card:down')}${kpi('bad',s.upN,'Due badha','card:up')}</div>
+    ${has?`<div class="kpis">${zk(zd,'good',s.clearN,'Poora clear','view:changes',inrS(s.clearAmt))}${zk(zd,'',s.downN,'Due kam hua','card:down')}${zk(zd,'bad',s.upN,'Due badha','card:up')}</div>${okline(zd)}
     <p class="mp">Outstanding wale customers: <b style="color:var(--ink)">${s.prevN} → ${s.nowN}</b> (${s.nowN-s.prevN>=0?'+':'−'}${Math.abs(s.nowN-s.prevN)}) – ${s.clearN} clear hue, ${s.newN} naye jude.</p>
     ${clearedL.length?`<ul class="cl">${clearedL.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${esc(x.agent||'—')}</span></span><b class="neg">${inr(x.prevOut)}</b></li>`).join('')}</ul>`:''}`:noPrev}</div>`;
 
-  const ageing=`<div class="sec dsec" style="margin-bottom:12px"><h3>Ageing – seedha list kholein <small>Outstanding (PDC se pehle), jinka due baaki hai</small></h3>
-    <div class="bks">${PL.map(x=>`<button type="button" class="bk2 plus" data-go="plus:${x.i}" style="--c:${BVARS[x.i]}"><span class="t">${x.l} <span class="muted" style="font-weight:500">(${x.sub})</span></span><b>${x.n} customers</b><span class="s">${inrS(x.amt)}</span></button>`).join('')}</div>
-    <div class="bks">${BKS.map(x=>`<button type="button" class="bk2" data-go="bk:${x.i}" style="--c:${BVARS[x.i]}"><span class="t">${x.l} din</span><b>${x.n} customers</b><span class="s">${inrS(x.amt)}</span></button>`).join('')}</div>
-    <p class="mp" style="margin:0">Upar wale 3 box saari purani payment ek saath dikhate hain (jaise 30+ = 31 din aur usse purani). Neeche wale box sirf ek ageing bucket kholte hain.</p></div>`;
-
   const calls=`<div class="sec dsec"><h3>Aaj pehle in customers ko call karein <small>aaj ke follow-up pehle, phir jinhe call nahi hua</small></h3>
-    ${callList.length?`<ul class="cl">${callList.map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – ${r.c.age!=null?r.c.age+' din':'–'}${r.status?' – '+esc(r.status):(r.notCalled?' – abhi tak call nahi':'')}</span></span><b>${inr(r.c.due)}</b></li>`).join('')}</ul>${callTotal>8?`<button class="btn small more" data-go="card:${cl1.length?'today':'never'}">Sab ${callTotal} dekhein</button>`:''}`:`<p class="mp">Aaj ke liye koi follow-up baaki nahi hai. Neeche "90+ din" ya "30+ din" kholkar naye follow-up shuru kar sakte ho.</p>`}</div>`;
+    ${callList.length?`<ul class="cl">${callList.map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – ${r.c.age!=null?r.c.age+' din':'–'}${r.status?' – '+esc(r.status+(r.sub&&r.sub!==r.status?' – '+r.sub:'')):(r.notCalled?' – abhi tak call nahi':'')}${r.cb?' – call back '+new Date(r.cb).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'}):''}</span></span><b>${inr(r.c.due)}</b></li>`).join('')}</ul>${callTotal>8?`<button class="btn small more" data-go="card:${cl1.length?'today':'never'}">Sab ${callTotal} dekhein</button>`:''}`:`<p class="mp">Aaj ke liye koi follow-up baaki nahi hai. Upar Ageing se "30+ din" ya "90+ din" kholkar naye follow-up shuru kar sakte ho.</p>`}</div>`;
 
   const ag=`<div class="sec dsec"><h3>Agent-wise (aaj) <small>pending follow-up ke hisaab se</small></h3>
     <div style="overflow-x:auto"><table class="mini" style="min-width:420px"><thead><tr><th>Agent</th><th class="num">Customers</th><th class="num">Aaj baaki</th><th class="num">Aaj calls</th><th class="num">30+ din</th></tr></thead><tbody>${agents.map(x=>`<tr data-agent="${esc(x.a)}" style="cursor:pointer"><td><b>${esc(x.a)}</b></td><td class="num">${x.n}</td><td class="num ${x.pend?'over':''}">${x.pend||'–'}</td><td class="num">${x.calls||'–'}</td><td class="num">${inrS(x.old)}</td></tr>`).join('')}</tbody></table></div></div>`;
@@ -778,14 +890,7 @@ function dashHTML(rows){
     ${days.length>=1?`<div class="trend">${days.map(x=>{ const q=x.byType[S.type]||{}, p1=q.pdcPaid||0, p2=Math.max(0,(q.paid||0)-p1), hh=Math.max(2,Math.round((q.paid||0)/mx*88)); return `<div><small class="v">${inrS(q.paid||0)}</small><div class="tb" style="height:${hh}px"><i style="flex:${p2};background:var(--accent)"></i><i style="flex:${p1};background:var(--b0)"></i></div><small>${fmtD(x.date)}</small></div>`; }).join('')}</div>
     <div class="legend" style="margin-top:8px"><span><span class="dot2" style="--c:var(--b0)"></span>PDC</span><span><span class="dot2" style="--c:var(--accent)"></span>Transaction</span></div>`:`<p class="mp">Do upload ke baad yahan roz ka payment graph banega.</p>`}</div>`;
 
-  const escRows=rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at);
-  const escLate=escRows.filter(r=>r.esc.upd&&r.esc.upd<t), escToday=escRows.filter(r=>r.esc.at>=T0).length;
-  const orphans=Object.entries(d.fu).filter(([k,f])=>f&&f.esc&&!d.customers.some(c=>c.k===k)).map(([k,f])=>({k,name:f.name||k,esc:f.esc}));
-  const escSec=`<div class="sec dsec" style="margin-bottom:12px"><h3>Escalation <small>${escRows.length} chalu</small></h3>
-    <div class="kpis">${kpi('bad',escRows.length,'Escalation chalu','card:esc',inrS(sumD(escRows))+' due')}${kpi('bad',escLate.length,'Update late','card:esclate')}${kpi('',escToday,'Aaj lagaye')}</div>
-    ${escRows.length?`<ul class="cl">${escRows.slice(0,6).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${Math.max(0,daysBetween(iso(new Date(r.esc.at)),t))} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${escRows.length>6?`<button class="btn small more" data-go="card:esc">Sab ${escRows.length} dekhein</button>`:''}`:`<p class="mp">Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.</p>`}
-    ${orphans.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par escalation chalu hai:</p><ul class="cl">${orphans.map(o=>`<li><span>${esc(o.name)}<span class="sub muted">${esc(o.esc.to||'—')} – ${esc((o.esc.reason||'').slice(0,70))}</span></span><button class="btn small" data-act="escdone" data-k="${esc(o.k)}">Hatayein</button></li>`).join('')}</ul>`:''}</div>`;
-  return warn+`<div class="dgrid">${work}${fup}</div>${escSec}<div class="dgrid">${nw}${pay}${dec}</div>${ageing}<div class="dgrid">${calls}${ag}${tr}</div>`;
+  return warn+alertBar+`<div class="bigs">${bigs}</div><div class="dgrid">${work}${fup}</div>${ageing}${trkCard}<div class="dgrid">${nw}${pay}${dec}</div><div class="dgrid">${calls}${ag}${tr}</div>`;
 }
 function renderDelta(){
   const d=D(), m=d.meta, el=$('#delta');
@@ -815,7 +920,7 @@ function renderFilters(rows){
   const fq=$('#fq'); if(document.activeElement!==fq) fq.value=S.q;
   const agents=[...new Set(rows.map(r=>r.agent||'—'))].sort();
   $('#fagent').innerHTML='<option value="">Sab agents</option>'+agents.map(a=>`<option ${S.agent===a?'selected':''}>${esc(a)}</option>`).join('');
-  $('#fstatus').innerHTML='<option value="">Sab call status</option><option value="_none" '+(S.status==='_none'?'selected':'')+'>Status nahi</option>'+STATUSES.map(s=>`<option ${S.status===s.v?'selected':''}>${s.v}</option>`).join('');
+  $('#fstatus').innerHTML='<option value="">Sab call status</option><option value="_none" '+(S.status==='_none'?'selected':'')+'>Status nahi</option>'+STATUSES.map(s=>`<optgroup label="${s.v}"><option value="${s.v}" ${S.status===s.v?'selected':''}>Sab ${s.v}</option>${s.subs.map(x=>`<option value="ss:${s.v}|${x}" ${S.status==='ss:'+s.v+'|'+x?'selected':''}>${s.v} – ${x}</option>`).join('')}</optgroup>`).join('');
   $('#fbucket').innerHTML='<option value="">Sabse purana bill: sab</option>'+BUCKETS.map((b,i)=>`<option value="${i}" ${S.bucket===String(i)?'selected':''}>${b} din</option>`).join('');
   $('#filters').style.display=S.view==='list'?'':'none';
 }
@@ -825,14 +930,24 @@ function stripHTML(c){
   return `<div class="strip" title="${esc(title)}" aria-label="${esc(title)}">${c.b.map((v,i)=>`<i class="${v>0?'on':''}" style="--c:${BVARS[i]};${v>0?'opacity:'+(0.45+0.55*Math.min(1,v/tot*1.6)).toFixed(2):''}"></i>`).join('')}</div>`;
 }
 function chip(s){ return s?`<span class="chip" style="--c:${SCOL[s]||'#6B7588'}">${esc(s)}</span>`:'<span class="chip none">Status nahi</span>'; }
+function trkLines(r){
+  let h='';
+  for(const kind of ['visit','cn']){
+    const T=r[kind]; if(!T) continue;
+    h+=`<span class="sub" style="color:var(--b3);font-weight:600">${TRK[kind].label}: ${trkLabel(kind,T.st)} (${Math.max(0,daysBetween(iso(new Date(T.at)),todayISO()))} din se)</span>`;
+    if((kind==='visit'&&(S.card==='visit'||S.card==='visitp'))||(kind==='cn'&&(S.card==='cn'||S.card==='cnnew'))) h+=`<span class="tbtns" style="margin-top:4px">${trkBtnsHTML(r.c.k,kind,T.st)}</span>`;
+  }
+  return h;
+}
 function nextHTML(r){
   if(!r.next) return '<span class="muted">–</span>';
   const t=todayISO(), dd=daysBetween(t,r.next);
   const w=r.fu&&r.fu.with?`<span class="sub">${esc(r.fu.with)} se</span>`:'';
-  if(dd<0) return `<span class="next late">${fmtD(r.next)}</span><span class="sub over">${-dd} din late</span>`+w;
-  if(dd===0) return `<span class="next today">Aaj</span>`+w;
-  if(dd===1) return `<span class="next">Kal</span>`+w;
-  return `<span class="next">${fmtD(r.next)}</span>`+w;
+  const cbT=r.cb?`<span class="sub" style="color:var(--accent);font-weight:600">Call back ${new Date(r.cb).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}</span>`:'';
+  if(dd<0) return `<span class="next late">${fmtD(r.next)}</span><span class="sub over">${-dd} din late</span>`+w+cbT;
+  if(dd===0) return `<span class="next today">Aaj</span>`+w+cbT;
+  if(dd===1) return `<span class="next">Kal</span>`+w+cbT;
+  return `<span class="next">${fmtD(r.next)}</span>`+w+cbT;
 }
 function lastHTML(r){ if(!r.logs.length) return ''; const at=r.logs[r.logs.length-1].at; const n=daysBetween(iso(new Date(at)),todayISO()); return `<span class="sub">Baat: ${n<=0?'aaj':n===1?'kal':n+' din pehle'}</span>`; }
 function listHTML(rows){
@@ -851,10 +966,10 @@ function listHTML(rows){
       r.esc?'<span class="flag">Escalated</span>':'',
       r.notCalled?'<span class="flag v">Call nahi hua</span>':''
     ].join('');
-    const ptp = r.status==='Promise To Pay'&&r.fu.ptp?`<span class="sub">${inrS(r.fu.ptp.amount)} – ${fmtD(r.fu.ptp.date)}</span>`:'';
+    const ptp = r.sub==='Promise To Pay'&&r.fu.ptp?`<span class="sub">${inrS(r.fu.ptp.amount)} – ${fmtD(r.fu.ptp.date)}</span>`:'';
     return `<tr data-open="${esc(c.k)}" tabindex="0"${S.open===c.k?' class="sel"':''}>
       <td class="muted">${i+1}</td>
-      <td><span class="cname">${esc(c.name)}</span>${S.tw?`<span class="sub" style="color:var(--accent);font-weight:600">${twLogs(r).map(l=>esc(l.st)+' – '+new Date(l.at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})).join(' · ')}</span>`:''}${r.esc?`<span class="sub" style="color:var(--bad);font-weight:600">→ ${esc(r.esc.to||'')}: ${esc((r.esc.reason||'').slice(0,60))} (${Math.max(0,daysBetween(iso(new Date(r.esc.at)),todayISO()))} din se)</span>`:''}${(S.card==='esc'||S.card==='esclate')&&r.esc?`<button class="btn small" style="margin-top:4px" data-act="escdone" data-k="${esc(c.k)}">Update mila – hatayein</button>`:''}${flags?'<div>'+flags+'</div>':''}</td>
+      <td><span class="cname">${esc(c.name)}</span>${S.tw?`<span class="sub" style="color:var(--accent);font-weight:600">${twLogs(r).map(l=>esc(l.st+(l.ss&&l.ss!==l.st?' – '+l.ss:''))+' – '+new Date(l.at).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})).join(' · ')}</span>`:''}${r.esc?`<span class="sub" style="color:var(--bad);font-weight:600">→ ${esc(r.esc.to||'')}: ${esc((r.esc.reason||'').slice(0,60))} (${Math.max(0,daysBetween(iso(new Date(r.esc.at)),todayISO()))} din se)</span>`:''}${(S.card==='esc'||S.card==='esclate')&&r.esc?`<button class="btn small" style="margin-top:4px" data-act="escdone" data-k="${esc(c.k)}">Update mila – hatayein</button>`:''}${trkLines(r)}${flags?'<div>'+flags+'</div>':''}</td>
       <td style="white-space:nowrap">${c.phone?esc(firstPhone(c.phone)):'<span class="muted">–</span>'}</td>
       <td class="num">${inr(c.out)}</td>
       <td class="num">${c.pdc?inr(c.pdc):'<span class="muted">–</span>'}</td>
@@ -862,7 +977,7 @@ function listHTML(rows){
       <td class="num">${c.age!=null?c.age:'–'}${c.over!=null&&c.over>0?`<span class="sub over">+${c.over} credit se upar</span>`:''}</td>
       <td>${stripHTML(c)}</td>
       <td>${esc(r.agent||'—')}</td>
-      <td>${chip(r.status)}${ptp}${lastHTML(r)}</td>
+      <td>${chip(r.status)}${r.sub&&r.sub!==r.status?`<span class="sub" style="color:var(--ink);font-weight:600">${esc(r.sub)}</span>`:''}${ptp}${lastHTML(r)}</td>
       <td class="rem">${r.ar?`<span class="t">${esc(r.ar.ar)}</span><span class="d">${fmtDT(r.ar.at)}</span>`:'<span class="muted">–</span>'}</td>
       <td class="rem">${r.cr?`<span class="t">${esc(r.cr.cr)}</span><span class="d">${fmtDT(r.cr.at)}</span>`:'<span class="muted">–</span>'}</td>
       <td>${nextHTML(r)}</td>
@@ -945,7 +1060,7 @@ function renderDrawer(fresh){
   const r=curRow(); if(!r){ closeDrawer(); return; }
   const c=r.c;
   const ph=firstPhone(c.phone), wa=phoneDigits(ph);
-  $('#dHead').innerHTML=`<h2 id="dTitle">${esc(c.name)}</h2>${r.esc?'<span class="flag" style="margin-top:6px">Escalated</span>':''}
+  $('#dHead').innerHTML=`<h2 id="dTitle">${esc(c.name)}</h2>${r.esc?'<span class="flag" style="margin-top:6px">Escalated</span>':''}${addrBlock(c)}
     <div class="links">
       ${ph?`<a class="btn small" href="tel:${esc(ph.replace(/[^\d+]/g,''))}">Call ${esc(ph)}</a>`:'<span class="muted">Phone number nahi hai</span>'}
       ${wa?`<a class="btn small" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(custMsg(c))}">WhatsApp reminder</a>`:''}
@@ -968,7 +1083,7 @@ function renderDrawer(fresh){
     ${c.inv.length?`<table class="mini" style="margin-top:10px"><thead><tr><th>Bill date</th><th>Bill no.</th><th class="num">Bill amount</th><th class="num">Pending</th><th class="num">Din</th></tr></thead><tbody>${c.inv.map(v=>`<tr><td>${fmtD(v.d)}</td><td>${esc(v.r||'–')}</td><td class="num muted">${inr(v.f??v.a)}</td><td class="num">${inr(v.a)}</td><td class="num">${v.d?daysBetween(v.d,todayISO()):'–'}</td></tr>`).join('')}</tbody></table><p class="count" style="margin:6px 0 0">FIFO se pending maane gaye bills${c.n>c.inv.length?` – sabse purane ${c.inv.length} dikhaye gaye (kul ${c.n})`:''}</p>`:''}
     ${c.pdcs&&c.pdcs.length?`<h3 style="margin-top:14px">PDC</h3><table class="mini"><tbody>${c.pdcs.map(x=>`<tr><td>${x.d?fmtD(x.d):'<span class="flag">Date nahi</span>'}</td><td>${esc(x.no||'–')}${x.bank?`<span class="sub">${esc(x.bank)}</span>`:''}</td><td class="num">${inr(x.a)}</td><td>${x.bounce?'<span class="flag">Bounce</span>':(x.d&&daysBetween(x.d,todayISO())>3?'<span class="flag">Date nikal gayi</span>':'')}</td></tr>`).join('')}</tbody></table>`:''}
   </div>`;
-  if(fresh){ renderForm(r); renderEsc(r); }
+  if(fresh){ renderForm(r); renderEsc(r); renderTrk(r); }
   renderTimeline(r);
 }
 const QC=['Call nahi uthaya','Kal payment karega','Cheque dega','Payment ho gaya bol raha hai','Bill copy maangi','Rate / CN issue','Owner bahar hai'];
@@ -1012,13 +1127,39 @@ function renderEsc(r){
     const btn=fm.querySelector('button[type=submit]'); btn.disabled=true;
     try{ await saveEsc(r.c,'raise',{to,reason,upd}); toast('Escalation lag gaya'); renderEsc(curRow()||r); render(); }catch(err){ toast('Nahi hua: '+(err.code||err.message)); btn.disabled=false; } };
 }
+function fmtAddr(a){ return String(a||'').split(/\s*;\s*/).map(x=>x.trim()).filter(Boolean).join(', '); }
+function addrBlock(c){
+  const a=fmtAddr(c.addr);
+  if(!a) return `<p class="addr none">${c.addr===undefined?'Address agli sheet upload ke baad dikhega':'Address nahi hai'}</p>`;
+  return `<p class="addr">${esc(a)}</p><div class="links" style="margin-top:6px"><button class="btn small" type="button" data-act="copyaddr" data-t="${esc(a)}">Copy</button><a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a)}">Map mein dekhein</a></div>`;
+}
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); toast('Address copy ho gaya'); }
+  catch(e){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); toast('Address copy ho gaya'); }catch(e2){ toast('Copy nahi hua'); } ta.remove(); }
+}
+function renderTrk(r){
+  const box=$('#trkBox'); if(!box||!r) return;
+  const ro=S.readOnly&&!S.demo, parts=[];
+  for(const kind of ['visit','cn']){
+    const T=r.fu&&r.fu[kind]; if(!T) continue;
+    if(T.on){
+      const dd=Math.max(0,daysBetween(iso(new Date(T.at)),todayISO()));
+      parts.push(`<div class="trkrow"><div><b>${TRK[kind].label} chalu</b> <span class="flag v">${trkLabel(kind,T.st)}</span><span class="sub muted">${dd} din se${T.src?' – '+esc(T.src):''}</span></div>${ro?'':`<div class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</div>`}</div>`);
+    } else parts.push(`<div class="trkrow muted"><div>${TRK[kind].label}: ${trkLabel(kind,T.st)} – ${fmtD(iso(new Date(T.upAt||T.at)))}</div></div>`);
+  }
+  box.className=parts.length?'sec':''; box.innerHTML=parts.length?`<h3>Visit / Credit Note</h3>${parts.join('')}`:'';
+}
 function renderForm(r){
   const f=$('#logForm');
   if(S.readOnly && !S.demo){ f.innerHTML='<h3>Call log</h3><p class="muted" style="margin:0">Sirf dekhne ka access hai.</p>'; return; }
-  const c=r.c, t=todayISO();
+  const c=r.c, t=todayISO(), streak=naStreak(r.logs);
   const agents=[...new Set(D().customers.map(x=>x.agent).concat(Object.values(D().fu).map(x=>x.agent)).filter(Boolean))].sort();
+  const defCB=()=>{ const d0=new Date(); d0.setDate(d0.getDate()+1); d0.setHours(11,0,0,0); return localDT(d0.getTime()); };
   f.innerHTML=`<h3>Naya call log</h3>
     <div class="field"><span>Call status</span><div class="statuses">${STATUSES.map((s,i)=>`<label><input type="radio" name="st" value="${s.v}" ${i===0?'required':''}><span style="--c:${s.c}">${s.v}</span></label>`).join('')}</div></div>
+    <div class="field" id="ssBox" hidden><span>Sub status</span><div class="statuses" id="ssList"></div></div>
+    <div class="warnbox" id="naWarn" hidden><b>Customer ${streak} baar se phone nahi utha raha.</b> Aap phir bhi Not Answer save kar sakte ho, ya <button class="btn small" type="button" id="naToNr">Not Responded mark karein</button> (Visit Req lag jayega).</div>
+    <div class="rgrid" id="cbBox" hidden><label class="field"><span>Call back kab (date aur time)</span><input type="datetime-local" name="cb" min="${localDT(Date.now())}"></label><span></span></div>
     <div class="field"><span>Follow-up kisse lena hai</span><div class="seg">${WITHS.map((w,i)=>`<label><input type="radio" name="with" value="${w}" ${(r.fu&&r.fu.with?r.fu.with===w:i===0)?'checked':''}><span>${w}</span></label>`).join('')}</div></div>
     <div class="rgrid">
       <label class="field"><span>Agent remark</span><textarea name="ar" placeholder="Agent ne kya bataya"></textarea><div class="qchips" data-for="ar">${QA.map(q=>`<button type="button">${q}</button>`).join('')}</div></label>
@@ -1040,35 +1181,58 @@ function renderForm(r){
     </div>
     <div class="savebar"><button class="btn" type="submit" value="save">Save karein</button><button class="btn primary" type="submit" value="next">Save karke agla customer</button></div>
     <p class="mp" style="margin:8px 0 0;text-align:right">Shortcut: Ctrl+Enter = save + agla customer &nbsp;·&nbsp; J / K = agla / pichla &nbsp;·&nbsp; Esc = band</p>`;
+  const selSt=()=>{ const x=f.querySelector('input[name=st]:checked'); return x?x.value:''; };
+  const selSs=()=>{ const x=f.querySelector('input[name=ss]:checked'); return x?x.value:''; };
   const updNx=()=>{ const el=f.querySelector('#nxl'); if(!el) return; const v=f.next.value; if(!v){ el.textContent=''; return; } const n=daysBetween(todayISO(),v); el.textContent=fromISO(v).toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'short'})+' ('+(n===0?'aaj':n===1?'kal':n>0?n+' din baad':(-n)+' din pehle')+')'; };
+  const applyRule=()=>{
+    const st=selSt(), ss=selSs();
+    $('#naWarn').hidden=!(st==='Not Answer'&&streak>=4);
+    const isCB=ss==='Call Back', isP=ss==='Promise To Pay';
+    $('#cbBox').hidden=!isCB; f.cb.required=isCB; if(isCB&&!f.cb.value) f.cb.value=defCB();
+    $('#ptpBox').hidden=!isP; f.pd.required=isP; f.pa.required=isP;
+    if(ss){
+      const rule=subRule(st,ss);
+      const w=f.querySelector(`input[name="with"][value="${rule.w}"]`); if(w) w.checked=true;
+      if(rule.n==='') f.next.value=''; else if(rule.n!=null) f.next.value=addDays(todayISO(),rule.n);
+      if(isCB&&f.cb.value) f.next.value=f.cb.value.slice(0,10);
+      if(isP&&f.pd.value) f.next.value=f.pd.value;
+    }
+    updNx();
+  };
+  const drawSubs=st=>{
+    const s=STATUSES.find(x=>x.v===st), box=$('#ssBox');
+    if(!s){ box.hidden=true; return; }
+    $('#ssList').innerHTML=s.subs.map(sub=>`<label><input type="radio" name="ss" value="${esc(sub)}" required><span style="--c:${s.c}">${esc(sub)}</span></label>`).join('');
+    box.hidden=false;
+    if(s.subs.length===1) f.querySelector('input[name=ss]').checked=true;
+    applyRule();
+  };
   f.oninput=e=>{ if(e.target.name==='next') updNx(); };
+  f.onclick=e=>{ if(e.target.closest('#naToNr')){ const x=f.querySelector('input[name=st][value="Not Responded"]'); x.checked=true; drawSubs('Not Responded'); } };
   f.querySelectorAll('.qchips').forEach(box=>box.onclick=e=>{ const b=e.target.closest('button'); if(!b) return; if(b.dataset.d!=null){ f.next.value=addDays(todayISO(),+b.dataset.d); updNx(); return; } const ta=f[box.dataset.for]; ta.value=(ta.value.trim()?ta.value.trim()+'. ':'')+b.textContent; ta.focus(); });
   f.onchange=e=>{
-    if(e.target.name==='st'){
-      const s=STATUSES.find(x=>x.v===e.target.value);
-      const isP=s.v==='Promise To Pay';
-      $('#ptpBox').hidden=!isP;
-      f.pd.required=isP; f.pa.required=isP;
-      if(s.next!=null) f.next.value=addDays(todayISO(),s.next); else if(s.v==='Paid') f.next.value='';
-      if(isP && f.pd.value) f.next.value=f.pd.value;
-      if(s.w){ const w=f.querySelector(`input[name="with"][value="${s.w}"]`); if(w) w.checked=true; }
-      else if(isP||s.v==='Not Answer'||s.v==='Connected'){ const w=f.querySelector('input[name="with"][value="Customer"]'); if(w) w.checked=true; }
-    }
-    if(e.target.name==='pd' && e.target.value) f.next.value=e.target.value;
-    updNx();
+    const n=e.target.name;
+    if(n==='st') drawSubs(e.target.value);
+    else if(n==='ss') applyRule();
+    else if(n==='cb'){ if(e.target.value) f.next.value=e.target.value.slice(0,10); updNx(); }
+    else if(n==='pd'){ if(e.target.value) f.next.value=e.target.value; updNx(); }
+    else updNx();
   };
   f.onsubmit=async e=>{
     e.preventDefault();
-    const st=f.st.value; if(!st){ toast('Pehle call status chunein'); return; }
+    const st=selSt(), ss=selSs();
+    if(!st){ toast('Pehle call status chunein'); return; }
+    if(!ss){ toast('Sub status chunein'); return; }
     const w=f.when.value?new Date(f.when.value).getTime():Date.now();
-    const entry={at:isNaN(w)?Date.now():Math.min(w,Date.now()), sv:Date.now(), by:uid||null, st, with:f.with.value, ar:f.ar.value.trim(), cr:f.cr.value.trim(), next:f.next.value||null, dueAt:r.c.due};
+    const entry={at:isNaN(w)?Date.now():Math.min(w,Date.now()), sv:Date.now(), by:uid||null, st, ss, with:f.with.value, ar:f.ar.value.trim(), cr:f.cr.value.trim(), next:f.next.value||null, dueAt:r.c.due};
     const goNext=e.submitter&&e.submitter.value==='next';
-    if(st==='Promise To Pay'){ entry.pd=f.pd.value; entry.pa=+f.pa.value||0; if(!entry.pd||!entry.pa){ toast('Promise date aur amount bharein'); return; } }
+    if(ss==='Call Back'){ if(!f.cb.value){ toast('Call back ki date aur time bharein'); return; } entry.cb=f.cb.value; entry.next=f.cb.value.slice(0,10); }
+    if(ss==='Promise To Pay'){ entry.pd=f.pd.value; entry.pa=+f.pa.value||0; if(!entry.pd||!entry.pa){ toast('Promise date aur amount bharein'); return; } }
     const btns=f.querySelectorAll('button[type=submit]'); btns.forEach(b=>b.disabled=true);
     try{
       await saveLog(r.c, entry, f.agent.value.trim()); toast('Update save ho gaya – '+fmtDT(entry.at));
       if(goNext){ const L=S.lastList||[], i=L.indexOf(r.c.k); const nk=L[i+1]; if(nk){ openDrawer(nk); return; } toast('List ka aakhri customer tha'); }
-      renderForm(curRow()||r);
+      const rr=curRow()||r; renderForm(rr); renderTrk(rr);
     }catch(err){ toast('Save nahi hua: '+(err&&err.code||err&&err.message||'error')); btns.forEach(b=>b.disabled=false); }
   };
 }
@@ -1083,8 +1247,9 @@ async function renderTimeline(r){
   const canDel=l=>!S.readOnly&&(S.demo||!db||!l.by||l.by===uid);
   ul.innerHTML=logs.map((l,i)=>`<li style="--c:${SCOL[l.st]||'#6B7588'}">
     <div class="when">Baat hui: <b style="color:var(--ink)">${fmtDT(l.at)}</b>${names[l.by]?' – '+esc(names[l.by]):''}${l.sv&&Math.abs(l.sv-l.at)>30*6e4?` <span title="Entry kab likhi gayi">(likha ${fmtDT(l.sv)})</span>`:''}${i===0&&canDel(l)?`<button class="del" data-dellog="${l.at}">Galat hai, hatayein</button>`:''}</div>
-    <div style="margin-top:3px">${chip(l.st)} <span class="muted" style="font-size:12.5px">${esc(l.with||'')} se${l.next?' – next '+fmtD(l.next):''}</span></div>
-    ${l.st==='Promise To Pay'&&l.pd?`<div class="r">Promise: <b style="color:var(--ink);font-size:13px">${inr(l.pa)}</b> – ${fmtD(l.pd)}</div>`:''}
+    <div style="margin-top:3px">${chip(l.st)} ${l.ss&&l.ss!==l.st?`<b style="font-size:12.5px">${esc(l.ss)}</b> · `:''}<span class="muted" style="font-size:12.5px">${esc(l.with||'')} se${l.next?' – next '+fmtD(l.next):''}</span></div>
+    ${l.cb?`<div class="r">Call back: <b style="color:var(--ink);font-size:13px">${fmtDT(new Date(l.cb).getTime())}</b></div>`:''}
+    ${l.ss==='Promise To Pay'&&l.pd?`<div class="r">Promise: <b style="color:var(--ink);font-size:13px">${inr(l.pa)}</b> – ${fmtD(l.pd)}</div>`:''}
     ${l.ar?`<div class="r"><b>Agent remark:</b> ${esc(l.ar)}</div>`:''}
     ${l.cr?`<div class="r"><b>Customer remark:</b> ${esc(l.cr)}</div>`:''}
   </li>`).join('');
@@ -1094,10 +1259,11 @@ async function renderTimeline(r){
 function clone(o){ return JSON.parse(JSON.stringify(o||{})); }
 function docFromLogs(c, logs, agent, base){
   logs=logs.slice().sort((a,b)=>a.at-b.at).slice(-150);
-  const l=logs[logs.length-1];
-  return { name:c.name, status:l?l.st:null, with:l?l.with:null, next:l?l.next:null,
-    ptp: l&&l.st==='Promise To Pay'?{date:l.pd, amount:l.pa, dueAt:l.dueAt??c.due, at:l.at}:null,
-    agent: agent||null, logs, updatedAt:Date.now(), esc:(base&&base.esc)||null, escHist:(base&&base.escHist)||[] };
+  const l=logs.length?normLog(logs[logs.length-1]):null;
+  return { name:c.name, status:l?l.st:null, sub:l?l.ss:null, with:l?l.with:null, next:l?l.next:null,
+    ptp: l&&l.ss==='Promise To Pay'?{date:l.pd, amount:l.pa, dueAt:l.dueAt??c.due, at:l.at}:null,
+    agent: agent||null, logs, updatedAt:Date.now(),
+    esc:(base&&base.esc)||null, escHist:(base&&base.escHist)||[], visit:(base&&base.visit)||null, cn:(base&&base.cn)||null };
 }
 async function putFu(c, doc){
   const d=D();
@@ -1107,7 +1273,15 @@ async function putFu(c, doc){
 }
 async function saveLog(c, entry, agentOverride){
   const cur=clone(D().fu[c.k]);
-  await putFu(c, docFromLogs(c,(cur.logs||[]).concat([entry]), agentOverride||cur.agent, cur));
+  const doc=docFromLogs(c,(cur.logs||[]).concat([entry]), agentOverride||cur.agent, cur);
+  const now=entry.sv||Date.now();
+  const openT=kind=>{ const T=doc[kind]; if(T&&T.on) return;
+    doc[kind]={on:true, st:kind==='visit'?'pending':'new', at:now, srcAt:entry.at, src:entry.st+' – '+entry.ss, upAt:now,
+      hist:((T&&T.hist)||[]).concat([{at:now,st:'open',note:entry.st+' – '+entry.ss,by:uid||null}]).slice(-30)}; };
+  if((entry.st==='Connected'&&entry.ss==='Visit Raise')||(entry.st==='Not Responded'&&entry.ss==='Visit Req')) openT('visit');
+  if(entry.st==='Connected'&&entry.ss==='Credit Note') openT('cn');
+  await putFu(c, doc);
+  if(!S.demo) D().fu[c.k]=doc;
 }
 async function saveEsc(c, act, data){
   const cur=clone(D().fu[c.k]); const now=Date.now(); const hist=(cur.escHist||[]).slice(); let E=cur.esc||null;
@@ -1125,9 +1299,28 @@ async function escDone(k){
   try{ await saveEsc(c,'resolve',{note:note.trim()}); toast('Escalation hata diya'); if(S.open===k) renderEsc(curRow()); render(); }
   catch(err){ toast('Nahi hua: '+(err.code||err.message)); }
 }
+async function saveTrk(c, kind, st, note){
+  const cur=clone(D().fu[c.k]); const T=cur[kind]; if(!T) return; const now=Date.now();
+  T.st=st; T.on=st!=='done'; T.upAt=now;
+  T.hist=(T.hist||[]).concat([{at:now,st,note:note||'',by:uid||null}]).slice(-30);
+  const doc={...docFromLogs(c,cur.logs||[],cur.agent,cur), [kind]:T};
+  await putFu(c, doc);
+  if(!S.demo) D().fu[c.k]=doc;
+}
+async function trkMove(k,kind,st){
+  if(S.readOnly&&!S.demo){ toast('Sirf dekhne ka access hai'); return; }
+  const d=D(); const c=d.customers.find(x=>x.k===k)||{k,name:(d.fu[k]&&d.fu[k].name)||k,due:0};
+  let note='';
+  if(st==='done'){ const n=prompt('Note likhein (khali chhod sakte hain).\n'+TRK[kind].label+' band karne ke liye OK dabayein:'); if(n===null) return; note=n.trim(); }
+  try{ await saveTrk(c,kind,st,note); toast(TRK[kind].label+': '+trkLabel(kind,st)); if(S.open===k) renderTrk(curRow()); render(); }
+  catch(err){ toast('Nahi hua: '+(err.code||err.message)); }
+}
 async function deleteLog(c, at){
   const cur=clone(D().fu[c.k]); const logs=(cur.logs||[]).filter(l=>String(l.at)!==String(at));
-  await putFu(c, docFromLogs(c, logs, cur.agent, cur));
+  const doc=docFromLogs(c, logs, cur.agent, cur);
+  for(const kind of ['visit','cn']){ const T=doc[kind]; if(T&&String(T.srcAt)===String(at)&&T.on&&(T.hist||[]).length<=1) doc[kind]=null; }
+  await putFu(c, doc);
+  if(!S.demo) D().fu[c.k]=doc;
 }
 async function saveSnapshot(custs, meta){
   if(db){
@@ -1250,7 +1443,7 @@ function extract(k){
   for(const row of u.rows.slice(u.hr+1)){
     const name=String(g(row,'name')||'').trim();
     if(!name||/^(grand\s*total|total|sub\s*total)\b/i.test(name)) continue;
-    if(k==='bal'){ const cd=pnum(g(row,'credit')); out.push({name,bal:pnum(g(row,'bal'))||0,group:String(g(row,'group')||''),mobile:String(g(row,'mobile')||'').trim(),phone:String(g(row,'phone')||'').trim(),person:String(g(row,'person')||'').trim(),credit:cd!=null?Math.round(cd):null}); }
+    if(k==='bal'){ const cd=pnum(g(row,'credit')); out.push({name,bal:pnum(g(row,'bal'))||0,group:String(g(row,'group')||''),mobile:String(g(row,'mobile')||'').trim(),phone:String(g(row,'phone')||'').trim(),person:String(g(row,'person')||'').trim(),addr:String(g(row,'addr')||'').trim(),credit:cd!=null?Math.round(cd):null}); }
     else if(k==='sales'){ const a=pnum(g(row,'amt')), d=pdate(g(row,'date')); if(a==null||!d) continue; out.push({name,date:d,ref:String(g(row,'ref')||'').trim(),amt:a}); }
     else if(k==='pdc'){ out.push({name,amt:pnum(g(row,'amt')),date:pdate(g(row,'date')),no:String(g(row,'no')||'').trim(),bank:String(g(row,'bank')||'').trim(),status:String(g(row,'status')||'')}); }
     else { const cd=pnum(g(row,'credit')); if(cd!=null) out.push({name,credit:Math.round(cd)}); }
@@ -1288,23 +1481,29 @@ async function processUpload(){
 async function exportXlsx(){
   if(!window.XLSX){ toast('Excel library load nahi hui – internet check karein'); return; }
   const rows=allRows(); const f=S.view==='list'?filtered(rows):rows.filter(r=>r.c.due>0);
-  const head=['Sr No','Customer Name','Phone No','Contact Person','Outstanding','PDC','Total Due','Age (days)','Credit Days','Over Credit (days)','0-15','16-30','31-60','61-90','90+','Agent','Call Status','Agent Remark','Customer Remark','Next Follow-up','Follow-up With','PTP Date','PTP Amount','Payment Aaya (last upload)','Naya Customer','Last Update Time','Escalated To','Escalation Reason','Escalated On'];
-  const aoa=[head].concat(f.map((r,i)=>{ const c=r.c; return [i+1,c.name,firstPhone(c.phone),c.person||'',c.out,c.pdc,c.due,c.age??'',c.cdays??'',c.over??'',...c.b,r.agent||'',r.status||'',r.ar?r.ar.ar:'',r.cr?r.cr.cr:'',r.next||'',r.fu&&r.fu.with||'',r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'',c.paid||'',c.isNew?'Haan':'',r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'',r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']; }));
+  const head=['Sr No','Customer Name','Phone No','Contact Person','Outstanding','PDC','Total Due','Age (days)','Credit Days','Over Credit (days)','0-15','16-30','31-60','61-90','90+','Agent','Call Status','Sub Status','Agent Remark','Customer Remark','Next Follow-up','Follow-up With','PTP Date','PTP Amount','Payment Aaya (last upload)','Naya Customer','Last Update Time','Escalated To','Escalation Reason','Escalated On'];
+  const aoa=[head].concat(f.map((r,i)=>{ const c=r.c; return [i+1,c.name,firstPhone(c.phone),c.person||'',c.out,c.pdc,c.due,c.age??'',c.cdays??'',c.over??'',...c.b,r.agent||'',r.status||'',r.sub||'',r.ar?r.ar.ar:'',r.cr?r.cr.cr:'',r.next||'',r.fu&&r.fu.with||'',r.fu&&r.fu.ptp?r.fu.ptp.date:'',r.fu&&r.fu.ptp?r.fu.ptp.amount:'',c.paid||'',c.isNew?'Haan':'',r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'',r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']; }));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[6,34,14,20,13,11,13,9,9,10,11,11,11,11,11,18,15,40,40,13,12,11,11].map(w=>({wch:w}));
+  ws['!cols']=head.map(x=>({wch:/Name/.test(x)?34:/Remark|Reason/.test(x)?40:14}));
   ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:aoa.length-1,c:head.length-1}})};
   XLSX.utils.book_append_sheet(wb,ws,'Collection');
   const A=new Map(); for(const r of rows){ if(r.c.due<=0) continue; const a=r.agent||'—'; const x=A.get(a)||{n:0,due:0,b:[0,0,0,0,0],today:0,broken:0}; x.n++; x.due+=r.c.due; r.c.b.forEach((v,i)=>x.b[i]+=v); if(r.isToday)x.today++; if(r.ptpState==='broken')x.broken++; A.set(a,x); }
   const ag=[['Agent','Customers','Total Due','0-15','16-30','31-60','61-90','90+','Follow-ups Due Today','Broken Promises']].concat([...A.entries()].sort((a,b)=>b[1].due-a[1].due).map(([a,x])=>[a,x.n,x.due,...x.b,x.today,x.broken]));
   const ws2=XLSX.utils.aoa_to_sheet(ag); ws2['!cols']=[22,11,14,12,12,12,12,12,12,12].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws2,'Agent Summary');
-  const lg=[['Date','Customer','Call Status','Follow-up With','Agent Remark','Customer Remark','PTP Date','PTP Amount','Next Follow-up']];
-  const d=D(); for(const [k,fu] of Object.entries(d.fu)) for(const l of (fu.logs||[])) lg.push([new Date(l.at).toLocaleString('en-IN'),fu.name||k,l.st,l.with||'',l.ar||'',l.cr||'',l.pd||'',l.pa||'',l.next||'']);
+  const lg=[['Date','Customer','Call Status','Sub Status','Call Back At','Follow-up With','Agent Remark','Customer Remark','PTP Date','PTP Amount','Next Follow-up']];
+  const d=D(); for(const [k,fu] of Object.entries(d.fu)) for(const l0 of (fu.logs||[])){ const l=normLog(l0); lg.push([new Date(l.at).toLocaleString('en-IN'),fu.name||k,l.st,l.ss||'',l.cb?l.cb.replace('T',' '):'',l.with||'',l.ar||'',l.cr||'',l.pd||'',l.pa||'',l.next||'']); }
   const ws3=XLSX.utils.aoa_to_sheet(lg); ws3['!cols']=[20,34,15,12,40,40,11,11,13].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws3,'Follow-up Log');
   const es=[['Customer','Agent','Escalated To','Reason','Escalated On','Days Open','Update Due','Total Due']].concat(rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at).map(r=>[r.c.name,r.agent||'',r.esc.to||'',r.esc.reason||'',new Date(r.esc.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(r.esc.at)),todayISO()),r.esc.upd||'',r.c.due]));
   if(es.length>1){ const ws5=XLSX.utils.aoa_to_sheet(es); ws5['!cols']=[34,16,16,40,13,10,12,13].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws5,'Escalations'); }
+  for(const [kind,nmx] of [['visit','Visit'],['cn','Credit Note']]){
+    const out=[['Customer','Agent','Stage','Status','Opened','Last Update','Days Open','Source','History']];
+    for(const [k,f] of Object.entries(d.fu)){ const T=f&&f[kind]; if(!T) continue; const c=d.customers.find(x=>x.k===k);
+      out.push([f.name||k,f.agent||(c&&c.agent)||'',trkLabel(kind,T.st),T.on?'Chalu':'Band',new Date(T.at).toLocaleDateString('en-IN'),new Date(T.upAt||T.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(T.at)),todayISO()),T.src||'',(T.hist||[]).map(x=>new Date(x.at).toLocaleDateString('en-IN')+' '+x.st+(x.note?': '+x.note:'')).join(' | ')]); }
+    if(out.length>1){ const w=XLSX.utils.aoa_to_sheet(out); w['!cols']=[34,16,14,9,12,12,10,28,60].map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,w,nmx); }
+  }
   const dd=Object.values(d.days||{}).filter(x=>x&&x.byType).sort((a,b)=>b.date.localeCompare(a.date));
   if(dd.length){ const da=[['Date','Payment Aaya','PDC Se','Transaction Se','Customers Paid','Naye Customers','Clear Hue','Naya Sale','Total Due','Due Customers']].concat(dd.map(x=>{ const s=x.byType[S.type]||{}; return [x.date,s.paid,s.pdcPaid||0,s.txnPaid??'',s.paidN,s.newN,s.clearN,s.sales,s.due,s.n]; }));
     const ws4=XLSX.utils.aoa_to_sheet(da); ws4['!cols']=[12,14,12,14,14,14,11,13,14,13].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws4,'Roz ka hisaab'); }
@@ -1346,8 +1545,9 @@ function makeDemo(){
   const days={}; for(let i=4;i>=1;i--){ const dt=addDays(t,-i); const sm=summarize(custs,clearedD,'agent'); const f=0.6+R()*0.8; const o={}; for(const k in sm) o[k]=Math.round(sm[k]*(k==='due'||k==='n'?1:f)); days[dt]={date:dt,at:Date.now()-i*DAY,prevAt:Date.now()-(i+1)*DAY,byType:{agent:o,all:o}}; }
   days[t]={date:t,at:Date.now(),prevAt:Date.now()-DAY,byType:{agent:summarize(custs,clearedD,'agent'),all:summarize(custs,clearedD,'all')}};
   const fu={};
+  const mkLog2=(dd,st,ss,w,ar,cr,next,x)=>({...mkLog(dd,st,w,ar,cr,next,x&&x.pd,x&&x.pa),ss,cb:x&&x.cb});
   const mkLog=(dd,st,w,ar,cr,next,pd,pa)=>({at:Date.now()-dd*DAY-(dd===0?Math.round(R()*30)*6e4:Math.round(R()*5)*36e5),by:null,st,with:w,ar,cr,next,pd,pa});
-  const set=(c,logs,extra={})=>{ const l=logs[logs.length-1]; fu[c.k]={name:c.name,status:l.st,with:l.with,next:l.next,ptp:l.st==='Promise To Pay'?{date:l.pd,amount:l.pa,dueAt:c.due+(extra.paid||0),at:l.at}:null,agent:null,logs}; };
+  const set=(c,logs,extra={})=>{ const l=logs[logs.length-1]; fu[c.k]={name:c.name,status:l.st,with:l.with,next:l.next,ptp:normLog(l).ss==='Promise To Pay'?{date:l.pd,amount:l.pa,dueAt:c.due+(extra.paid||0),at:l.at}:null,agent:null,logs}; };
   const c=custs.filter(x=>x.type==='agent'&&x.due>0).sort((a,b)=>b.due-a.due);
   if(c[0]) set(c[0],[mkLog(6,'Not Answer','Customer','','',addDays(t,-5)),mkLog(4,'Promise To Pay','Customer','','Saturday tak NEFT kar denge',addDays(t,-2),addDays(t,-2),25000)]);
   if(c[1]) set(c[1],[mkLog(2,'Connected','Customer','','Accountant chhutti par hai, Monday ko call karein',t)]);
@@ -1361,6 +1561,12 @@ function makeDemo(){
   if(c[9]) set(c[9],[mkLog(0,'Promise To Pay','Customer','Dealer se baat hui','Cheque kal dega',addDays(t,1),addDays(t,1),Math.min(25000,c[9].due))]);
   if(c[10]) set(c[10],[mkLog(0,'Not Answer','Customer','','',addDays(t,1))]);
   if(c[11]) set(c[11],[mkLog(0,'Wrong No','Agent','Number badalna hai','',addDays(t,1))]);
+  if(c[12]) set(c[12],[mkLog2(4,'Not Answer','Call Back','Customer','','',addDays(t,-3)),mkLog2(3,'Not Answer','Call Back','Customer','','',addDays(t,-2)),mkLog2(2,'Not Answer','Call Back','Customer','','',addDays(t,-1)),mkLog2(1,'Not Answer','Call Back','Customer','','',t)]);
+  if(c[13]) set(c[13],[mkLog2(0,'Language Barrier','Tamil','Customer','Tamil bolne wala banda chahiye','',addDays(t,2))]);
+  const trk0=(kind,st,src,ago)=>({on:true,st,at:Date.now()-ago*DAY,srcAt:0,src,upAt:Date.now()-ago*DAY,hist:[{at:Date.now()-ago*DAY,st:'open',note:src}]});
+  if(c[2]&&fu[c[2].k]) fu[c[2].k].visit=trk0('visit','pending','Connected – Visit Raise',2);
+  if(c[3]&&fu[c[3].k]) fu[c[3].k].cn=trk0('cn','return','Connected – Credit Note',3);
+  if(c[8]&&fu[c[8].k]) fu[c[8].k].visit=trk0('visit','raised','Not Responded – Visit Req',5);
   if(c[3]&&fu[c[3].k]){ fu[c[3].k].esc={at:Date.now()-2*DAY,to:'Manager',reason:'Rate difference – CN pending',upd:addDays(t,-1),by:null}; fu[c[3].k].escHist=[{at:Date.now()-2*DAY,act:'raise',to:'Manager',reason:'Rate difference – CN pending',upd:addDays(t,-1)}]; }
   if(c[5]&&fu[c[5].k]){ fu[c[5].k].esc={at:Date.now()-6*36e5,to:'Accounts Head',reason:'Payment adjust nahi hua',upd:addDays(t,2),by:null}; fu[c[5].k].escHist=[{at:Date.now()-6*36e5,act:'raise',to:'Accounts Head',reason:'Payment adjust nahi hua',upd:addDays(t,2)}]; }
   return {customers:custs, meta:{ver:1,at:Date.now(),today:t,prevAt:Date.now()-2*DAY,files:{out:'sample'},cleared:clearedD}, fu, days};
@@ -1380,17 +1586,20 @@ document.addEventListener('click',e=>{
     else if(act==='exitdemo'){ S.demo=false; closeDrawer(); $('#main').innerHTML=''; render(); }
     else if(act==='dens'){ S.dense=!S.dense; document.body.classList.toggle('dense',!!S.dense); try{ localStorage.setItem('cdense',S.dense?'1':''); }catch(e){} }
     else if(act==='escdone') escDone(a.dataset.k);
+    else if(act==='trk') trkMove(a.dataset.k,a.dataset.t,a.dataset.s);
+    else if(act==='copyaddr') copyText(a.dataset.t);
     else if(act==='clearf'){ S.card='all'; S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge(); render(); }
     return; }
   if(e.target.closest('[data-stop]')) return;
-  const go=e.target.closest('[data-go]'); if(go){ const gi=go.dataset.go.indexOf(':'), gt=go.dataset.go.slice(0,gi), gv=go.dataset.go.slice(gi+1); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
-    if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; }
+  const go=e.target.closest('[data-go]'); if(go&&go.dataset.go.startsWith('trktab:')){ S.trkTab=go.dataset.go.slice(7); render(); return; }
+  if(go){ const gi=go.dataset.go.indexOf(':'), gt=go.dataset.go.slice(0,gi), gv=go.dataset.go.slice(gi+1); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
+    if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; if(['visit','visitp','cn','cnnew'].includes(gv)) S.sort={k:'trkat',d:1}; }
     else if(gt==='bk'){ S.card='all'; S.bk=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
     else if(gt==='plus'){ S.card='all'; S.plus=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
     else if(gt==='tw'){ S.card='any'; S.tw=gv; S.sort={k:'lastcall',d:-1}; S.view='list'; }
     else if(gt==='view'){ S.view=gv; }
     render(); window.scrollTo({top:0}); return; }
-  const cd=e.target.closest('[data-card]'); if(cd){ S.card=cd.dataset.card; resetAge(); if(S.card==='esc') S.sort={k:'escat',d:1}; S.view='list'; render(); return; }
+  const cd=e.target.closest('[data-card]'); if(cd){ S.card=cd.dataset.card; resetAge(); if(S.card==='esc') S.sort={k:'escat',d:1}; if(['visit','cn'].includes(S.card)) S.sort={k:'trkat',d:1}; S.view='list'; render(); return; }
   const tb=e.target.closest('.tabs [data-view], .dl[data-view]'); if(tb){ S.view=tb.dataset.view; render(); return; }
   const so=e.target.closest('[data-sort]'); if(so){ const k=so.dataset.sort; S.sort = S.sort.k===k?{k,d:-S.sort.d}:{k,d:(k==='name'||k==='agent'||k==='next'||k==='status')?1:-1}; render(); return; }
   const ag=e.target.closest('[data-agent]'); if(ag){ S.agent=ag.dataset.agent; S.view='list'; S.card='all'; resetAge(); render(); window.scrollTo({top:0}); return; }
