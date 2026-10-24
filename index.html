@@ -204,6 +204,11 @@ button.kpi:hover{border-color:var(--faint)}
 .mp{margin:0 0 8px;color:var(--muted);font-size:13px}
 
 .more{margin-top:8px}
+.invbox{margin-top:10px}
+.invbox.scroll{max-height:330px;overflow:auto;border:1px solid var(--line-2);border-radius:8px}
+.invbox .mini{margin:0}
+.invbox thead th{background:var(--surface);position:sticky;top:0;z-index:2}
+.invbox tfoot td{position:sticky;bottom:0;background:var(--surface-2);border-top:1px solid var(--line);z-index:2}
 .kpi.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .xlbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .xlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 10px}
@@ -406,15 +411,29 @@ function normLog(l){ if(l.ss!=null) return l; const m=OLD_MAP[l.st]; return m?{.
 function naStreak(logs){ let n=0; for(let i=logs.length-1;i>=0;i--){ if(logs[i].st==='Not Answer') n++; else break; } return n; }
 const TRK = {
   visit:{label:'Visit', stages:[['pending','Visit Pending'],['raised','Raised'],['done','Visit Done']]},
-  cn:{label:'Credit Note', stages:[['new','Naya'],['return','Return Raised'],['pickup','Pickup Done'],['done','CN Done']]}
+  cn:{label:'Credit Note'}
 };
-function trkLabel(kind,st){ const x=TRK[kind].stages.find(s=>s[0]===st); return x?x[1]:st; }
-function trkNext(kind,st){ const s=TRK[kind].stages, i=s.findIndex(x=>x[0]===st); return i>=0?(s[i+1]||null):null; }
-function trkBtnsHTML(k,kind,st){
-  const nx=trkNext(kind,st); if(!nx) return '';
-  const last=TRK[kind].stages[TRK[kind].stages.length-1];
-  let h=`<button class="btn small" type="button" data-act="trk" data-k="${esc(k)}" data-t="${kind}" data-s="${nx[0]}">→ ${nx[1]}</button>`;
-  if(nx[0]!==last[0]) h+=`<button class="btn small ghost" type="button" data-act="trk" data-k="${esc(k)}" data-t="${kind}" data-s="done">${last[1]}</button>`;
+const CN_STAGES = {
+  return:[['return','Return Raise'],['pickup','Pickup Done'],['done','CN Done']],
+  mrp:[['wv','Warehouse Verification'],['verified','Verified'],['done','CN Done']]
+};
+const CN_KIND = {return:'Return Raise', mrp:'MRP Issue'};
+const CN_CARDS = ['cn','cnret','cnwv','cnrej','cnmrp','cnreturn'];
+function normT(kind,T){ if(!T) return T; if(kind==='cn') return {...T,kind:T.kind||'return',st:T.st==='new'?'return':T.st}; return T; }
+function stagesOf(kind,T){ return kind==='visit'?TRK.visit.stages:(CN_STAGES[(T&&T.kind)||'return']||CN_STAGES.return); }
+function trkLabel(kind,st,T){ if(st==='reject') return 'Rejected'; if(st==='closed') return 'Band'; const x=stagesOf(kind,T).find(s=>s[0]===st); return x?x[1]:st; }
+function trkTitle(kind,T){ return kind==='visit'?'Visit':'Credit Note – '+CN_KIND[(T&&T.kind)||'return']; }
+function trkBtnsHTML(k,kind,T){
+  const st=T.st, b=(s,txt,cls)=>`<button class="btn small ${cls||''}" type="button" data-act="trk" data-k="${esc(k)}" data-t="${kind}" data-s="${s}">${txt}</button>`;
+  if(kind==='cn'&&T.kind==='mrp'){
+    if(st==='wv') return b('verified','Verified')+b('reject','Reject');
+    if(st==='verified') return b('done','→ CN Done');
+    if(st==='reject') return b('closed','Band karein');
+    return '';
+  }
+  const stages=stagesOf(kind,T), i=stages.findIndex(x=>x[0]===st), nx=stages[i+1]; if(!nx) return '';
+  const last=stages[stages.length-1];
+  let h=b(nx[0],'→ '+nx[1]); if(nx[0]!==last[0]) h+=b('done',last[1],'ghost');
   return h;
 }
 const WITHS = ['Customer','Agent','Accounts'];
@@ -572,7 +591,7 @@ function buildCustomers(src, prev, settings, today, opts={}){
       agent:fixA(grp.name), agentPhone:grp.phone, type:grp.type, cdays,
       out:r0(bal), pdc:r0(pdc), due:r0(bal-pdc), age:bal>0?age:null, over:(bal>0&&age!=null&&cdays!=null)?age-cdays:null,
       b:b.map(r0), op:r0(op), opFrom:op?hist:null, n:pend.length,
-      inv:pend.slice(0,12).map(v=>({d:v.d,r:String(v.r||'').slice(0,30),a:r0(v.a),f:r0(v.f)})),
+      inv:pend.map(v=>({d:v.d,r:String(v.r||'').slice(0,30),a:r0(v.a),f:r0(v.f)})),
       pdcs:list.slice(0,20), stuck:active.filter(x=>x.d && daysBetween(x.d,today)>3).length,
       nodate:active.filter(x=>!x.d).length, bounced:list.filter(x=>x.bounce).reduce((s,x)=>s+x.a,0),
       ...(()=>{ const bs=baseOf(p), st=r0(ST.get(k)||0);
@@ -629,7 +648,7 @@ function derive(c, fu, today, meta){
   const active = c.due>0 && sub!=='Paid';
   return {
     c, fu, logs, status, sub, next, agent, ar, cr, ptpState, esc:(fu&&fu.esc)||null, escH:(fu&&fu.escHist)||[],
-    visit:(fu&&fu.visit&&fu.visit.on)?fu.visit:null, cn:(fu&&fu.cn&&fu.cn.on)?fu.cn:null,
+    visit:(fu&&fu.visit&&fu.visit.on)?fu.visit:null, cn:(fu&&fu.cn&&fu.cn.on)?normT('cn',fu.cn):null,
     cb:(last&&last.cb&&last.next===last.cb.slice(0,10))?last.cb:null,
     isToday: active && next && next<=today,
     isLate: active && next && next<today,
@@ -657,7 +676,11 @@ const CARDS = [
   {k:'visit', l:'Visit chalu', c:'var(--b2)', f:r=>!!r.visit},
   {k:'cn', l:'Credit Note chalu', c:'var(--b3)', f:r=>!!r.cn},
   {k:'visitp', l:'Visit pending', hide:1, f:r=>!!r.visit&&r.visit.st==='pending'},
-  {k:'cnnew', l:'Credit Note naya (return raise nahi hua)', hide:1, f:r=>!!r.cn&&r.cn.st==='new'},
+  {k:'cnret', l:'Return Raise pending', hide:1, f:r=>!!r.cn&&r.cn.kind==='return'&&r.cn.st==='return'},
+  {k:'cnwv', l:'Warehouse Verification pending', hide:1, f:r=>!!r.cn&&r.cn.kind==='mrp'&&r.cn.st==='wv'},
+  {k:'cnrej', l:'MRP Reject – customer ko batana hai', hide:1, f:r=>!!r.cn&&r.cn.st==='reject'},
+  {k:'cnmrp', l:'Credit Note – MRP Issue', hide:1, f:r=>!!r.cn&&r.cn.kind==='mrp'},
+  {k:'cnreturn', l:'Credit Note – Return Raise', hide:1, f:r=>!!r.cn&&r.cn.kind==='return'},
   {k:'esclate', l:'Escalation update late', hide:1, f:r=>!!r.esc&&!!r.esc.upd&&r.esc.upd<todayISO()},
   {k:'paid',  l:'Payment aaya', hide:1, f:r=>r.c.paid>0},
   {k:'new',   l:'Naye add hue', hide:1, f:r=>r.c.isNew},
@@ -695,7 +718,7 @@ function filtered(rows){
   const {k,d}=S.sort;
   const val=r=>{ switch(k){
     case 'name': return r.c.name.toLowerCase(); case 'out': return r.c.out; case 'pdc': return r.c.pdc;
-    case 'trkat': return (S.card==='cn'||S.card==='cnnew')?(r.cn?r.cn.at:9e15):(r.visit?r.visit.at:9e15); case 'escat': return r.esc?r.esc.at:9e15; case 'lastcall': return r.logs.length?r.logs[r.logs.length-1].at:0; case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
+    case 'trkat': return CN_CARDS.includes(S.card)?(r.cn?r.cn.at:9e15):(r.visit?r.visit.at:9e15); case 'escat': return r.esc?r.esc.at:9e15; case 'lastcall': return r.logs.length?r.logs[r.logs.length-1].at:0; case 'bamt': return bkAmt(r); case 'due': return r.c.due; case 'age': return r.c.age??-1; case 'agent': return (r.agent||'').toLowerCase();
     case 'status': return r.status||''; case 'next': return r.next||'9999'; default: return r.c.due; } };
   out.sort((a,b)=>{ const x=val(a), y=val(b); return (x<y?-1:x>y?1:0)*d; });
   return out;
@@ -813,7 +836,7 @@ function dashHTML(rows){
   const escRows=rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at);
   const escLate=escRows.filter(r=>r.esc.upd&&r.esc.upd<t), escToday=escRows.filter(r=>r.esc.at>=T0).length;
   const visitRows=rows.filter(r=>r.visit).sort((a,b)=>a.visit.at-b.visit.at), visitP=visitRows.filter(r=>r.visit.st==='pending');
-  const cnRows=rows.filter(r=>r.cn).sort((a,b)=>a.cn.at-b.cn.at), cnNew=cnRows.filter(r=>r.cn.st==='new');
+  const cnRows=rows.filter(r=>r.cn).sort((a,b)=>a.cn.at-b.cn.at), cnRet=cnRows.filter(r=>r.cn.kind==='return'&&r.cn.st==='return'), cnWv=cnRows.filter(r=>r.cn.kind==='mrp'&&r.cn.st==='wv'), cnRej=cnRows.filter(r=>r.cn.st==='reject');
   const orph=kind=>Object.entries(d.fu).filter(([k,f])=>f&&(kind==='esc'?f.esc:(f[kind]&&f[kind].on))&&!d.customers.some(c=>c.k===k)).map(([k,f])=>({k,name:f.name||k,x:kind==='esc'?f.esc:f[kind]}));
   const chqN=rows.filter(CARDS.find(x=>x.k==='chq').f).length;
 
@@ -834,7 +857,7 @@ function dashHTML(rows){
   const noPrev=`<p class="mp">Agli baar nayi sheets upload karte hi yahan dikhega.</p>`;
 
   /* 1. dhyan do */
-  const alerts=[[broken.length,'Promise toote','card:broken'],[late.length,'Follow-up late','card:late'],[escLate.length,'Escalation update late','card:esclate'],[visitP.length,'Visit pending','card:visitp'],[cnNew.length,'Credit Note naya','card:cnnew'],[chqN,'PDC mein dikkat','card:chq']].filter(x=>x[0]>0);
+  const alerts=[[broken.length,'Promise toote','card:broken'],[late.length,'Follow-up late','card:late'],[escLate.length,'Escalation update late','card:esclate'],[visitP.length,'Visit pending','card:visitp'],[cnRet.length,'Return Raise pending','card:cnret'],[cnWv.length,'Warehouse Verification pending','card:cnwv'],[cnRej.length,'MRP Reject – customer ko batana hai','card:cnrej'],[chqN,'PDC mein dikkat','card:chq']].filter(x=>x[0]>0);
   const alertBar=alerts.length?`<div class="alertbar" role="region" aria-label="Dhyan do"><b>Dhyan do:</b>${alerts.map(x=>`<button type="button" data-go="${x[2]}"><b>${x[0]}</b>${x[1]}</button>`).join('')}</div>`:'';
 
   /* 2. bade numbers */
@@ -862,29 +885,29 @@ function dashHTML(rows){
     <div class="age3">${PL.map(x=>`<button type="button" class="btn small" data-go="plus:${x.i}"><b>${x.l}</b>&nbsp;${x.n} customers · ${inrS(x.amt)}</button>`).join('')}</div></div>`;
 
   /* trackers card */
-  const tabs=[{k:'esc',l:'Escalation',n:escRows.length,bad:escLate.length,bl:'late'},{k:'visit',l:'Visit',n:visitRows.length,bad:visitP.length,bl:'pending'},{k:'cn',l:'Credit Note',n:cnRows.length,bad:cnNew.length,bl:'naya'}];
+  const tabs=[{k:'esc',l:'Escalation',n:escRows.length,bad:escLate.length,bl:'late'},{k:'visit',l:'Visit',n:visitRows.length,bad:visitP.length,bl:'pending'},{k:'cn',l:'Credit Note',n:cnRows.length,bad:cnRet.length+cnWv.length+cnRej.length,bl:'pending'}];
   const tab=S.trkTab&&tabs.find(x=>x.k===S.trkTab)?S.trkTab:(tabs.find(x=>x.n>0)||tabs[0]).k;
-  const orphHTML=kind=>{ const o=orph(kind); return o.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${kind==='esc'?'escalation':kind==='visit'?'visit':'credit note'} chalu hai:</p><ul class="cl">${o.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${kind==='esc'?esc(x.x.to||'—')+' – '+esc((x.x.reason||'').slice(0,70)):trkLabel(kind,x.x.st)}</span></span>${kind==='esc'?`<button class="btn small" data-act="escdone" data-k="${esc(x.k)}">Hatayein</button>`:`<span class="tbtns"><button class="btn small" data-act="trk" data-k="${esc(x.k)}" data-t="${kind}" data-s="done">Band karein</button></span>`}</li>`).join('')}</ul>`:''; };
-  const trkList=(arr,kind,see)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>{ const T=r[kind]; return `<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – <b>${trkLabel(kind,T.st)}</b> – ${ago(T.at)} din se</span></span><span class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</span></li>`; }).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${see}">Sab ${arr.length} dekhein</button>`:''}`:`<p class="mp">Is box mein abhi koi customer nahi hai.</p>`;
+  const orphHTML=kind=>{ const o=orph(kind); return o.length?`<p class="mp" style="margin-top:10px"><b>Ye customers ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${kind==='esc'?'escalation':kind==='visit'?'visit':'credit note'} chalu hai:</p><ul class="cl">${o.map(x=>`<li><span>${esc(x.name)}<span class="sub muted">${kind==='esc'?esc(x.x.to||'—')+' – '+esc((x.x.reason||'').slice(0,70)):trkLabel(kind,x.x.st,normT(kind,x.x))}</span></span>${kind==='esc'?`<button class="btn small" data-act="escdone" data-k="${esc(x.k)}">Hatayein</button>`:`<span class="tbtns"><button class="btn small" data-act="trk" data-k="${esc(x.k)}" data-t="${kind}" data-s="done">Band karein</button></span>`}</li>`).join('')}</ul>`:''; };
+  const trkList=(arr,kind,see)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>{ const T=r[kind]; return `<li><span>${nm(r)}<span class="sub muted">${esc(r.agent||'—')} – <b>${kind==='cn'?CN_KIND[T.kind]+' – ':''}${trkLabel(kind,T.st,T)}</b> – ${ago(T.at)} din se</span></span><span class="tbtns">${trkBtnsHTML(r.c.k,kind,T)}</span></li>`; }).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${see}">Sab ${arr.length} dekhein</button>`:''}`:`<p class="mp">Is box mein abhi koi customer nahi hai.</p>`;
   const escList=(arr,see)=>arr.length?`<ul class="cl">${arr.slice(0,8).map(r=>`<li><span>${nm(r)}<span class="sub muted">${esc(r.esc.to||'—')} – ${esc((r.esc.reason||'').slice(0,70))} – ${ago(r.esc.at)} din se${r.esc.upd&&r.esc.upd<t?' – update late':''}</span></span><button class="btn small" data-act="escdone" data-k="${esc(r.c.k)}">Update mila</button></li>`).join('')}</ul>${arr.length>8?`<button class="btn small more" data-go="card:${see}">Sab ${arr.length} dekhein</button>`:''}`:`<p class="mp">Is box mein abhi koi customer nahi hai.</p>`;
   const tbox=(key,cls,n,l,sub)=>`<button type="button" class="kpi ${cls||''} ${S.trkBox===key?'on':''}" data-go="trkbox:${key}" aria-pressed="${S.trkBox===key}"><b>${n}</b><span>${l}</span>${sub?`<span class="s2">${sub}</span>`:''}</button>`;
-  const TL={'esc:all':'Escalation chalu','esc:late':'Escalation – update late','esc:today':'Aaj lagaye','visit:pending':'Visit Pending','visit:raised':'Visit Raised','visit:all':'Visit – total chalu','cn:new':'Credit Note – Naya','cn:return':'Return Raised','cn:pickup':'Pickup Done','cn:all':'Credit Note – total chalu'};
-  const SEE={'esc:all':'esc','esc:late':'esclate','esc:today':'esc','visit:pending':'visitp','visit:raised':'visit','visit:all':'visit','cn:new':'cnnew','cn:return':'cn','cn:pickup':'cn','cn:all':'cn'};
-  const tbList=key=>{ switch(key){ case 'esc:all':return escRows; case 'esc:late':return escLate; case 'esc:today':return escRows.filter(r=>r.esc.at>=T0); case 'visit:pending':return visitP; case 'visit:raised':return visitRows.filter(r=>r.visit.st==='raised'); case 'visit:all':return visitRows; case 'cn:new':return cnNew; case 'cn:return':return cnRows.filter(r=>r.cn.st==='return'); case 'cn:pickup':return cnRows.filter(r=>r.cn.st==='pickup'); case 'cn:all':return cnRows; } return []; };
+  const TL={'esc:all':'Escalation chalu','esc:late':'Escalation – update late','esc:today':'Aaj lagaye','visit:pending':'Visit Pending','visit:raised':'Visit Raised','visit:all':'Visit – total chalu','cn:mrp':'Credit Note – MRP Issue','cn:return':'Credit Note – Return Raise'};
+  const SEE={'esc:all':'esc','esc:late':'esclate','esc:today':'esc','visit:pending':'visitp','visit:raised':'visit','visit:all':'visit','cn:mrp':'cnmrp','cn:return':'cnreturn'};
+  const tbList=key=>{ switch(key){ case 'esc:all':return escRows; case 'esc:late':return escLate; case 'esc:today':return escRows.filter(r=>r.esc.at>=T0); case 'visit:pending':return visitP; case 'visit:raised':return visitRows.filter(r=>r.visit.st==='raised'); case 'visit:all':return visitRows; case 'cn:mrp':return cnRows.filter(r=>r.cn.kind==='mrp'); case 'cn:return':return cnRows.filter(r=>r.cn.kind==='return'); } return []; };
   let panel='';
   const openKey=S.trkBox&&S.trkBox.startsWith(tab+':')?S.trkBox:null;
   const HINT={esc:'Abhi koi escalation nahi hai. Customer ka panel kholkar "Escalation lagayein" se add kar sakte ho.',visit:'Koi visit chalu nahi hai. Connected → Visit Raise ya Not Responded → Visit Req log karte hi customer yahan aa jayega.',cn:'Koi Credit Note chalu nahi hai. Connected → Credit Note log karte hi customer yahan aa jayega.'};
   let boxes='';
   if(tab==='esc') boxes=`<div class="kpis">${tbox('esc:all','bad',escRows.length,'Escalation chalu',inrS(sumD(escRows))+' due')}${tbox('esc:late','bad',escLate.length,'Update late')}${tbox('esc:today','',escToday,'Aaj lagaye')}</div>`;
   else if(tab==='visit') boxes=`<div class="kpis">${tbox('visit:pending','bad',visitP.length,'Visit Pending')}${tbox('visit:raised','',visitRows.filter(r=>r.visit.st==='raised').length,'Raised')}${tbox('visit:all','',visitRows.length,'Total chalu')}</div>`;
-  else boxes=`<div class="kpis">${tbox('cn:new','bad',cnNew.length,'Naya (return raise nahi hua)')}${tbox('cn:return','',cnRows.filter(r=>r.cn.st==='return').length,'Return Raised')}${tbox('cn:pickup','',cnRows.filter(r=>r.cn.st==='pickup').length,'Pickup Done')}${tbox('cn:all','',cnRows.length,'Total chalu')}</div>`;
+  else boxes=`<div class="kpis">${tbox('cn:mrp','',cnRows.filter(r=>r.cn.kind==='mrp').length,'MRP Issue',[cnWv.length?cnWv.length+' verification pending':'',cnRej.length?cnRej.length+' reject':''].filter(Boolean).join(' · '))}${tbox('cn:return','',cnRows.filter(r=>r.cn.kind==='return').length,'Return Raise',cnRet.length?cnRet.length+' pickup pending':'')}</div>`;
   let lst='';
   if(openKey){
     const arr=tbList(openKey);
-    lst=`<p class="mp" style="margin-top:4px"><b style="color:var(--ink)">${TL[openKey]}</b> – ${arr.length} customers · <button type="button" class="linkbtn" data-go="trkbox:${openKey}">Band karein</button></p>${tab==='esc'?escList(arr,SEE[openKey]):trkList(arr,tab,SEE[openKey])}${openKey.endsWith(':all')?orphHTML(tab):''}`;
+    lst=`<p class="mp" style="margin-top:4px"><b style="color:var(--ink)">${TL[openKey]}</b> – ${arr.length} customers · <button type="button" class="linkbtn" data-go="trkbox:${openKey}">Band karein</button></p>${tab==='esc'?escList(arr,SEE[openKey]):trkList(arr,tab,SEE[openKey])}${(openKey.endsWith(':all')||tab==='cn')?orphHTML(tab):''}`;
   } else {
     const o=orph(tab), tot=tabs.find(x=>x.k===tab).n;
-    if(o.length) lst=`<p class="mp"><b>${o.length} customer ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${tab==='esc'?'escalation':tab==='visit'?'visit':'credit note'} chalu hai. <button type="button" class="linkbtn" data-go="trkbox:${tab}:all">Dekhein</button></p>`;
+    if(o.length) lst=`<p class="mp"><b>${o.length} customer ab list mein nahi hain</b> (payment ho gaya ya sheet se hat gaye), par ${tab==='esc'?'escalation':tab==='visit'?'visit':'credit note'} chalu hai. <button type="button" class="linkbtn" data-go="trkbox:${tab}:${tab==='cn'?'mrp':'all'}">Dekhein</button></p>`;
     else if(!tot) lst=`<p class="mp">${HINT[tab]}</p>`;
     else lst=`<p class="mp">Kisi bhi box par click karke us ke customers dekhein.</p>`;
   }
@@ -964,8 +987,8 @@ function trkLines(r){
   let h='';
   for(const kind of ['visit','cn']){
     const T=r[kind]; if(!T) continue;
-    h+=`<span class="sub" style="color:var(--b3);font-weight:600">${TRK[kind].label}: ${trkLabel(kind,T.st)} (${Math.max(0,daysBetween(iso(new Date(T.at)),todayISO()))} din se)</span>`;
-    if((kind==='visit'&&(S.card==='visit'||S.card==='visitp'))||(kind==='cn'&&(S.card==='cn'||S.card==='cnnew'))) h+=`<span class="tbtns" style="margin-top:4px">${trkBtnsHTML(r.c.k,kind,T.st)}</span>`;
+    h+=`<span class="sub" style="color:var(--b3);font-weight:600">${trkTitle(kind,T)}: ${trkLabel(kind,T.st,T)} (${Math.max(0,daysBetween(iso(new Date(T.at)),todayISO()))} din se)</span>`;
+    if((kind==='visit'&&(S.card==='visit'||S.card==='visitp'))||(kind==='cn'&&CN_CARDS.includes(S.card))) h+=`<span class="tbtns" style="margin-top:4px">${trkBtnsHTML(r.c.k,kind,T)}</span>`;
   }
   return h;
 }
@@ -1015,7 +1038,7 @@ function listHTML(rows){
   }).join('');
   const cd=CARDS.find(x=>x.k===S.card); S.lastList=f.map(r=>r.c.k);
   const bkOn=S.bk!=null||S.plus!=null, bkT=bkOn?f.reduce((s,r)=>s+bkAmt(r),0):0;
-  return `<p class="count">${bkOn?`<b>${bkLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${S.tw?`<b>${twLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${cd&&cd.hide&&cd.k!=='any'?`<b>${cd.l}</b>${cd.k==='ptpt'?'':' (pichhle upload se)'} – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${f.length} customers – total due ${inr(tot)}${bkOn?` – is ageing mein ${inr(bkT)}`:''}</p>
+  return `<p class="count">${bkOn?`<b>${bkLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${S.tw?`<b>${twLabel()}</b> – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${cd&&cd.hide&&cd.k!=='any'?`<b>${cd.l}</b>${['paid','new','down','up'].includes(cd.k)?' (pichhle upload se)':''} – <button class="btn small ghost" data-act="clearf">Filter hatayein</button> `:''}${f.length} customers – total due ${inr(tot)}${bkOn?` – is ageing mein ${inr(bkT)}`:''}</p>
   <div class="tablebox"><table>
     <thead>
       <tr class="grp">
@@ -1110,7 +1133,7 @@ function renderDrawer(fresh){
   $('#dInfo').innerHTML=`<div class="sec"><h3>Ageing</h3>
     ${c.b.map((v,i)=>`<div class="bk"><span>${BUCKETS[i]}</span><span class="bar2"><i style="--c:${BVARS[i]};width:${(v/tot*100).toFixed(1)}%"></i></span><span class="num" style="text-align:right">${v?inr(v):'–'}</span></div>`).join('')}
     ${c.op?`<p class="count" style="margin:6px 0 0">${inr(c.op)} ka balance sales report ki shuruaat (${fmtD(c.opFrom)}) se pehle ka hai, isliye ise sabse purane bucket mein rakha gaya hai.</p>`:''}
-    ${c.inv.length?`<table class="mini" style="margin-top:10px"><thead><tr><th>Bill date</th><th>Bill no.</th><th class="num">Bill amount</th><th class="num">Pending</th><th class="num">Din</th></tr></thead><tbody>${c.inv.map(v=>`<tr><td>${fmtD(v.d)}</td><td>${esc(v.r||'–')}</td><td class="num muted">${inr(v.f??v.a)}</td><td class="num">${inr(v.a)}</td><td class="num">${v.d?daysBetween(v.d,todayISO()):'–'}</td></tr>`).join('')}</tbody></table><p class="count" style="margin:6px 0 0">FIFO se pending maane gaye bills${c.n>c.inv.length?` – sabse purane ${c.inv.length} dikhaye gaye (kul ${c.n})`:''}</p>`:''}
+    ${c.inv.length?`<div class="invbox${c.inv.length>10?' scroll':''}"><table class="mini"><thead><tr><th>Bill date</th><th>Bill no.</th><th class="num">Bill amount</th><th class="num">Pending</th><th class="num">Din</th></tr></thead><tbody>${c.inv.map(v=>`<tr><td>${fmtD(v.d)}</td><td>${esc(v.r||'–')}</td><td class="num muted">${inr(v.f??v.a)}</td><td class="num">${inr(v.a)}</td><td class="num">${v.d?daysBetween(v.d,todayISO()):'–'}</td></tr>`).join('')}</tbody><tfoot>${c.op?`<tr><td colspan="3">Sales report se pehle ka balance</td><td class="num">${inr(c.op)}</td><td></td></tr>`:''}<tr class="tot"><td colspan="3"><b>Total pending (${c.n} bills${c.op?' + purana balance':''})</b></td><td class="num"><b>${inr(c.inv.length>=c.n?c.inv.reduce((s,v)=>s+v.a,0)+(c.op||0):c.out)}</b></td><td></td></tr></tfoot></table></div><p class="count" style="margin:6px 0 0">FIFO se pending maane gaye bills (kul ${c.n})${c.n>c.inv.length?` – sirf ${c.inv.length} dikhaye gaye, baaki agli sheet upload ke baad dikhenge`:''}</p>`:''}
     ${c.pdcs&&c.pdcs.length?`<h3 style="margin-top:14px">PDC</h3><table class="mini"><tbody>${c.pdcs.map(x=>`<tr><td>${x.d?fmtD(x.d):'<span class="flag">Date nahi</span>'}</td><td>${esc(x.no||'–')}${x.bank?`<span class="sub">${esc(x.bank)}</span>`:''}</td><td class="num">${inr(x.a)}</td><td>${x.bounce?'<span class="flag">Bounce</span>':(x.d&&daysBetween(x.d,todayISO())>3?'<span class="flag">Date nikal gayi</span>':'')}</td></tr>`).join('')}</tbody></table>`:''}
   </div>`;
   if(fresh){ renderForm(r); renderEsc(r); renderTrk(r); }
@@ -1171,11 +1194,11 @@ function renderTrk(r){
   const box=$('#trkBox'); if(!box||!r) return;
   const ro=S.readOnly&&!S.demo, parts=[];
   for(const kind of ['visit','cn']){
-    const T=r.fu&&r.fu[kind]; if(!T) continue;
+    const T=normT(kind,r.fu&&r.fu[kind]); if(!T) continue;
     if(T.on){
       const dd=Math.max(0,daysBetween(iso(new Date(T.at)),todayISO()));
-      parts.push(`<div class="trkrow"><div><b>${TRK[kind].label} chalu</b> <span class="flag v">${trkLabel(kind,T.st)}</span><span class="sub muted">${dd} din se${T.src?' – '+esc(T.src):''}</span></div>${ro?'':`<div class="tbtns">${trkBtnsHTML(r.c.k,kind,T.st)}</div>`}</div>`);
-    } else parts.push(`<div class="trkrow muted"><div>${TRK[kind].label}: ${trkLabel(kind,T.st)} – ${fmtD(iso(new Date(T.upAt||T.at)))}</div></div>`);
+      parts.push(`<div class="trkrow"><div><b>${trkTitle(kind,T)} chalu</b> <span class="flag v">${trkLabel(kind,T.st,T)}</span><span class="sub muted">${dd} din se${T.src?' – '+esc(T.src):''}</span></div>${ro?'':`<div class="tbtns">${trkBtnsHTML(r.c.k,kind,T)}</div>`}</div>`);
+    } else parts.push(`<div class="trkrow muted"><div>${trkTitle(kind,T)}: ${trkLabel(kind,T.st,T)} – ${fmtD(iso(new Date(T.upAt||T.at)))}</div></div>`);
   }
   box.className=parts.length?'sec':''; box.innerHTML=parts.length?`<h3>Visit / Credit Note</h3>${parts.join('')}`:'';
 }
@@ -1190,6 +1213,7 @@ function renderForm(r){
     <div class="field" id="ssBox" hidden><span>Sub status</span><div class="statuses" id="ssList"></div></div>
     <div class="warnbox" id="naWarn" hidden><b>Customer ${streak} baar se phone nahi utha raha.</b> Aap phir bhi Not Answer save kar sakte ho, ya <button class="btn small" type="button" id="naToNr">Not Responded mark karein</button> (Visit Req lag jayega).</div>
     <div class="rgrid" id="cbBox" hidden><label class="field"><span>Call back kab (date aur time)</span><input type="datetime-local" name="cb" min="${localDT(Date.now())}"></label><span></span></div>
+    <div class="field" id="cnrBox" hidden><span>CN ki wajah</span><div class="statuses"><label><input type="radio" name="cnr" value="return"><span style="--c:#2F6FBF">Return Raise</span></label><label><input type="radio" name="cnr" value="mrp"><span style="--c:#9A6234">MRP Issue</span></label></div></div>
     <div class="field"><span>Follow-up kisse lena hai</span><div class="seg">${WITHS.map((w,i)=>`<label><input type="radio" name="with" value="${w}" ${(r.fu&&r.fu.with?r.fu.with===w:i===0)?'checked':''}><span>${w}</span></label>`).join('')}</div></div>
     <div class="rgrid">
       <label class="field"><span>Agent remark</span><textarea name="ar" placeholder="Agent ne kya bataya"></textarea><div class="qchips" data-for="ar">${QA.map(q=>`<button type="button">${q}</button>`).join('')}</div></label>
@@ -1219,6 +1243,7 @@ function renderForm(r){
     $('#naWarn').hidden=!(st==='Not Answer'&&streak>=4);
     const isCB=ss==='Call Back', isP=ss==='Promise To Pay';
     $('#cbBox').hidden=!isCB; f.cb.required=isCB; if(isCB&&!f.cb.value) f.cb.value=defCB();
+    const isCN=st==='Connected'&&ss==='Credit Note'; $('#cnrBox').hidden=!isCN; f.querySelectorAll('input[name=cnr]').forEach(x=>x.required=isCN);
     $('#ptpBox').hidden=!isP; f.pd.required=isP; f.pa.required=isP;
     if(ss){
       const rule=subRule(st,ss);
@@ -1257,6 +1282,7 @@ function renderForm(r){
     const entry={at:isNaN(w)?Date.now():Math.min(w,Date.now()), sv:Date.now(), by:uid||null, st, ss, with:f.with.value, ar:f.ar.value.trim(), cr:f.cr.value.trim(), next:f.next.value||null, dueAt:r.c.due};
     const goNext=e.submitter&&e.submitter.value==='next';
     if(ss==='Call Back'){ if(!f.cb.value){ toast('Call back ki date aur time bharein'); return; } entry.cb=f.cb.value; entry.next=f.cb.value.slice(0,10); }
+    if(st==='Connected'&&ss==='Credit Note'){ const x=f.querySelector('input[name=cnr]:checked'); if(!x){ toast('CN ki wajah chunein'); return; } entry.cnr=x.value; }
     if(ss==='Promise To Pay'){ entry.pd=f.pd.value; entry.pa=+f.pa.value||0; if(!entry.pd||!entry.pa){ toast('Promise date aur amount bharein'); return; } }
     const btns=f.querySelectorAll('button[type=submit]'); btns.forEach(b=>b.disabled=true);
     try{
@@ -1279,6 +1305,7 @@ async function renderTimeline(r){
     <div class="when">Baat hui: <b style="color:var(--ink)">${fmtDT(l.at)}</b>${names[l.by]?' – '+esc(names[l.by]):''}${l.sv&&Math.abs(l.sv-l.at)>30*6e4?` <span title="Entry kab likhi gayi">(likha ${fmtDT(l.sv)})</span>`:''}${i===0&&canDel(l)?`<button class="del" data-dellog="${l.at}">Galat hai, hatayein</button>`:''}</div>
     <div style="margin-top:3px">${chip(l.st)} ${l.ss&&l.ss!==l.st&&l.st!=='Language Barrier'?`<b style="font-size:12.5px">${esc(l.ss)}</b> · `:''}<span class="muted" style="font-size:12.5px">${esc(l.with||'')} se${l.next?' – next '+fmtD(l.next):''}</span></div>
     ${l.cb?`<div class="r">Call back: <b style="color:var(--ink);font-size:13px">${fmtDT(new Date(l.cb).getTime())}</b></div>`:''}
+    ${l.cnr?`<div class="r">CN wajah: <b style="color:var(--ink);font-size:13px">${l.cnr==='mrp'?'MRP Issue':'Return Raise'}</b></div>`:''}
     ${l.ss==='Promise To Pay'&&l.pd?`<div class="r">Promise: <b style="color:var(--ink);font-size:13px">${inr(l.pa)}</b> – ${fmtD(l.pd)}</div>`:''}
     ${l.ar?`<div class="r"><b>Agent remark:</b> ${esc(l.ar)}</div>`:''}
     ${l.cr?`<div class="r"><b>Customer remark:</b> ${esc(l.cr)}</div>`:''}
@@ -1306,7 +1333,7 @@ async function saveLog(c, entry, agentOverride){
   const doc=docFromLogs(c,(cur.logs||[]).concat([entry]), agentOverride||cur.agent, cur);
   const now=entry.sv||Date.now();
   const openT=kind=>{ const T=doc[kind]; if(T&&T.on) return;
-    doc[kind]={on:true, st:kind==='visit'?'pending':'new', at:now, srcAt:entry.at, src:entry.st+' – '+entry.ss, upAt:now,
+    doc[kind]={on:true, st:kind==='visit'?'pending':(entry.cnr==='mrp'?'wv':'return'), ...(kind==='cn'?{kind:entry.cnr||'return'}:{}), at:now, srcAt:entry.at, src:entry.st+' – '+entry.ss, upAt:now,
       hist:((T&&T.hist)||[]).concat([{at:now,st:'open',note:entry.st+' – '+entry.ss,by:uid||null}]).slice(-30)}; };
   if((entry.st==='Connected'&&entry.ss==='Visit Raise')||(entry.st==='Not Responded'&&entry.ss==='Visit Req')) openT('visit');
   if(entry.st==='Connected'&&entry.ss==='Credit Note') openT('cn');
@@ -1347,7 +1374,7 @@ async function migrateTrackers(){
     const mk=st=>({on:true,st,at:L.at,srcAt:L.at,src:'Purana log: '+L.st+' – '+L.ss,upAt:Date.now(),hist:[{at:Date.now(),st:'open',note:'Purane log se tracker mein joda gaya'}],mig:true});
     const doc={...f}; let ch=false;
     if(isV&&!f.visit){ doc.visit=mk('pending'); nv++; ch=true; }
-    if(isC&&!f.cn){ doc.cn=mk('new'); nc++; ch=true; }
+    if(isC&&!f.cn){ doc.cn={...mk('return'),kind:'return'}; nc++; ch=true; }
     if(ch) tasks.push([k,doc]);
   }
   try{
@@ -1359,7 +1386,7 @@ async function migrateTrackers(){
 }
 async function saveTrk(c, kind, st, note){
   const cur=clone(D().fu[c.k]); const T=cur[kind]; if(!T) return; const now=Date.now();
-  T.st=st; T.on=st!=='done'; T.upAt=now;
+  T.st=st; T.on=!(st==='done'||st==='closed'); T.upAt=now; if(kind==='cn'&&!T.kind) T.kind='return';
   T.hist=(T.hist||[]).concat([{at:now,st,note:note||'',by:uid||null}]).slice(-30);
   const doc={...docFromLogs(c,cur.logs||[],cur.agent,cur), [kind]:T};
   await putFu(c, doc);
@@ -1369,8 +1396,8 @@ async function trkMove(k,kind,st){
   if(S.readOnly&&!S.demo){ toast('Sirf dekhne ka access hai'); return; }
   const d=D(); const c=d.customers.find(x=>x.k===k)||{k,name:(d.fu[k]&&d.fu[k].name)||k,due:0};
   let note='';
-  if(st==='done'){ const n=prompt('Note likhein (khali chhod sakte hain).\n'+TRK[kind].label+' band karne ke liye OK dabayein:'); if(n===null) return; note=n.trim(); }
-  try{ await saveTrk(c,kind,st,note); toast(TRK[kind].label+': '+trkLabel(kind,st)); if(S.open===k) renderTrk(curRow()); render(); }
+  if(st==='done'||st==='closed'){ const n=prompt('Note likhein (khali chhod sakte hain).\n'+TRK[kind].label+' band karne ke liye OK dabayein:'); if(n===null) return; note=n.trim(); }
+  try{ await saveTrk(c,kind,st,note); toast(TRK[kind].label+': '+trkLabel(kind,st,normT(kind,(d.fu[k]||{})[kind]))); if(S.open===k) renderTrk(curRow()); render(); }
   catch(err){ toast('Nahi hua: '+(err.code||err.message)); }
 }
 async function deleteLog(c, at){
@@ -1561,7 +1588,7 @@ const XCOLS=[
   {k:'last',l:'Last Update Time',h:['Last Update Time'],v:r=>[r.logs.length?new Date(r.logs[r.logs.length-1].at).toLocaleString('en-IN'):'']},
   {k:'esc',l:'Escalation (kisko, reason, kab)',h:['Escalated To','Escalation Reason','Escalated On'],v:r=>[r.esc?r.esc.to:'',r.esc?r.esc.reason:'',r.esc?new Date(r.esc.at).toLocaleString('en-IN'):'']},
   {k:'visit',l:'Visit Stage',h:['Visit Stage'],v:r=>[r.visit?trkLabel('visit',r.visit.st):'']},
-  {k:'cn',l:'Credit Note Stage',h:['Credit Note Stage'],v:r=>[r.cn?trkLabel('cn',r.cn.st):'']}
+  {k:'cn',l:'Credit Note Stage',h:['Credit Note Stage'],v:r=>[r.cn?(r.cn.kind==='mrp'?'MRP Issue – '+trkLabel('cn',r.cn.st,r.cn):(r.cn.st==='return'?'Return Raise':'Return Raise – '+trkLabel('cn',r.cn.st,r.cn))):'']}
 ];
 function xlSaved(){ try{ const j=JSON.parse(localStorage.getItem('cdcols')||'null'); if(Array.isArray(j)) return j; }catch(e){} return S.xlCols||null; }
 function xlSel(){ return [...document.querySelectorAll('#xlGrid input:checked')].map(i=>i.value); }
@@ -1596,10 +1623,10 @@ async function exportXlsx(sel){
   const es=[['Customer','Agent','Escalated To','Reason','Escalated On','Days Open','Update Due','Total Due']].concat(rows.filter(r=>r.esc).sort((a,b)=>a.esc.at-b.esc.at).map(r=>[r.c.name,r.agent||'',r.esc.to||'',r.esc.reason||'',new Date(r.esc.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(r.esc.at)),todayISO()),r.esc.upd||'',r.c.due]));
   if(es.length>1){ const ws5=XLSX.utils.aoa_to_sheet(es); ws5['!cols']=[34,16,16,40,13,10,12,13].map(w=>({wch:w})); XLSX.utils.book_append_sheet(wb,ws5,'Escalations'); }
   for(const [kind,nmx] of [['visit','Visit'],['cn','Credit Note']]){
-    const out=[['Customer','Agent','Stage','Status','Opened','Last Update','Days Open','Source','History']];
-    for(const [k,f] of Object.entries(d.fu)){ const T=f&&f[kind]; if(!T) continue; const c=d.customers.find(x=>x.k===k);
-      out.push([f.name||k,f.agent||(c&&c.agent)||'',trkLabel(kind,T.st),T.on?'Chalu':'Band',new Date(T.at).toLocaleDateString('en-IN'),new Date(T.upAt||T.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(T.at)),todayISO()),T.src||'',(T.hist||[]).map(x=>new Date(x.at).toLocaleDateString('en-IN')+' '+x.st+(x.note?': '+x.note:'')).join(' | ')]); }
-    if(out.length>1){ const w=XLSX.utils.aoa_to_sheet(out); w['!cols']=[34,16,14,9,12,12,10,28,60].map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,w,nmx); }
+    const out=[['Customer','Agent','Reason','Stage','Status','Opened','Last Update','Days Open','Source','History']];
+    for(const [k,f] of Object.entries(d.fu)){ const T=normT(kind,f&&f[kind]); if(!T) continue; const c=d.customers.find(x=>x.k===k);
+      out.push([f.name||k,f.agent||(c&&c.agent)||'',kind==='cn'?CN_KIND[T.kind]:'–',trkLabel(kind,T.st,T),T.on?'Chalu':'Band',new Date(T.at).toLocaleDateString('en-IN'),new Date(T.upAt||T.at).toLocaleDateString('en-IN'),daysBetween(iso(new Date(T.at)),todayISO()),T.src||'',(T.hist||[]).map(x=>new Date(x.at).toLocaleDateString('en-IN')+' '+x.st+(x.note?': '+x.note:'')).join(' | ')]); }
+    if(out.length>1){ const w=XLSX.utils.aoa_to_sheet(out); w['!cols']=[34,16,16,14,9,12,12,10,28,60].map(x=>({wch:x})); XLSX.utils.book_append_sheet(wb,w,nmx); }
   }
   const dd=Object.values(d.days||{}).filter(x=>x&&x.byType).sort((a,b)=>b.date.localeCompare(a.date));
   if(dd.length){ const da=[['Date','Payment Aaya','PDC Se','Transaction Se','Customers Paid','Naye Customers','Clear Hue','Naya Sale','Total Due','Due Customers']].concat(dd.map(x=>{ const s=x.byType[S.type]||{}; return [x.date,s.paid,s.pdcPaid||0,s.txnPaid??'',s.paidN,s.newN,s.clearN,s.sales,s.due,s.n]; }));
@@ -1691,7 +1718,7 @@ document.addEventListener('click',e=>{
   const go=e.target.closest('[data-go]'); if(go&&go.dataset.go.startsWith('trktab:')){ S.trkTab=go.dataset.go.slice(7); S.trkBox=null; render(); return; }
   if(go&&go.dataset.go.startsWith('trkbox:')){ const key=go.dataset.go.slice(7); S.trkBox=(S.trkBox===key?null:key); S.trkTab=key.split(':')[0]; render(); return; }
   if(go){ const gi=go.dataset.go.indexOf(':'), gt=go.dataset.go.slice(0,gi), gv=go.dataset.go.slice(gi+1); S.q=''; S.agent=''; S.status=''; S.bucket=''; resetAge();
-    if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; if(['visit','visitp','cn','cnnew'].includes(gv)) S.sort={k:'trkat',d:1}; }
+    if(gt==='card'){ S.card=gv; S.view='list'; if(gv==='esc'||gv==='esclate') S.sort={k:'escat',d:1}; if(['visit','visitp',...CN_CARDS].includes(gv)) S.sort={k:'trkat',d:1}; }
     else if(gt==='bk'){ S.card='all'; S.bk=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
     else if(gt==='plus'){ S.card='all'; S.plus=+gv; S.sort={k:'bamt',d:-1}; S.view='list'; }
     else if(gt==='tw'){ S.card='any'; S.tw=gv; S.sort={k:'lastcall',d:-1}; S.view='list'; }
